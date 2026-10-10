@@ -25,11 +25,15 @@
   }
 
   function niceTicks(min, max, n = 5) {
+    /* floating-point noise (a share that sums to 100.00000001, a value of -1e-14) must not change the axis */
+    const eps = Math.max(Math.abs(min), Math.abs(max), 1) * 1e-9;
+    if (Math.abs(min) < eps) min = 0;
+    if (Math.abs(max) < eps) max = 0;
     if (min === max) { max = min + 1; }
     const span = max - min, raw = span / n;
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
-    const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw * (1 - 1e-9));
+    const lo = Math.floor(min / step + 1e-9) * step, hi = Math.ceil(max / step - 1e-9) * step;
     const t = [];
     for (let v = lo; v <= hi + step / 2; v += step) t.push(+v.toPrecision(12));
     return t;

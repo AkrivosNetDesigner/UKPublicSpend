@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -122,7 +122,7 @@
         kpi("Tax not collected", bn(hm.gap), `${hm.gapYear} estimate · ${pc(hm.gapPct)} of tax due`),
         kpi("High-priority flags", String(high + hm.high + D.ons.flags.filter(f => f.sev === 3).length + D.dwp.flags.filter(f => f.sev === 3).length), "unusual figures to look at first"),
       ),
-      el("div", { class: "notice info" }, el("b", {}, "Month by month: "), "the Treasury's spending tables are annual. For monthly figures see ", el("a", { href: "#/monthly" }, "Monthly finances"), " (ONS: spending, receipts, borrowing and debt interest) and ", el("a", { href: "#/tax" }, "Tax & tax gap"), " (HMRC receipts). For benefit fraud and error see ", el("a", { href: "#/benefits" }, "Benefit fraud & error"), "."),
+      el("div", { class: "notice info" }, el("b", {}, "Month by month: "), "the Treasury's spending tables are annual. For monthly figures see ", el("a", { href: "#/monthly" }, "Monthly finances"), " (ONS: spending, receipts, borrowing and debt interest) and ", el("a", { href: "#/tax" }, "Tax & tax gap"), " (HMRC receipts). For how borrowing builds into debt, who lends and at what price, see ", el("a", { href: "#/borrowing" }, "Borrowing & debt"), "; for benefit fraud and error, ", el("a", { href: "#/benefits" }, "Benefit fraud & error"), "."),
     );
     const g = el("div", { class: "grid g2" });
     const c1 = chartBox(), c2 = chartBox(), c3 = chartBox(), c4 = chartBox();
@@ -746,6 +746,97 @@
     }
   };
 
+  /* ---------- Borrowing & debt */
+  const borState = { measure: "borrowing", range: "all", hold: "share", yrange: "all", frange: "120" };
+  VIEWS.borrowing = () => {
+    const B = D.bor, O = D.ons, S = Object.fromEntries(O.series.map(s => [s.cdid, s])), months = O.months, li = months.length - 1;
+    const fs = months.findLastIndex(m => m.endsWith("-04")), sum = (c, a, b) => S[c].values.slice(a, b).reduce((x, v) => x + (v || 0), 0);
+    const ytd = sum("J5II", fs, li + 1), ytdPrev = sum("J5II", fs - 12, li + 1 - 12), lastFY = sum("J5II", fs - 12, fs), fyLabel = fyOf(months[fs - 12]);
+    const lastNZ = a => { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return [i, a[i]]; return [-1, null]; };
+    const [gi, gdp] = lastNZ(B.annual.net_debt_gdp), gdpYear = B.annual.years[gi];
+    const int = B.interest_share.at(-1), iss = B.issuance, ii = iss.years.length - 1, Y = B.yields, ym = Y.months.length - 1;
+    const root = el("div", {}, el("h2", {}, "Borrowing and debt"),
+      el("p", { class: "lede" }, "Government borrows when it spends more than it receives; each year's borrowing adds to the national debt, and the debt costs interest. Most of it is borrowed by selling “gilts” (government bonds) to investors, so who buys them, and the interest rate they demand, decide what borrowing costs. This page follows that chain using the ONS public finances, the Debt Management Office (DMO) and the Bank of England."),
+      el("div", { class: "kpis" },
+        kpi("Borrowed so far this year", bn(ytd / 1000), `since April ${months[fs].slice(0, 4)} · ${bn(ytdPrev / 1000)} in the same months last year`),
+        kpi(`Borrowed in ${fyLabel}`, bn(lastFY / 1000), "the last full financial year"),
+        kpi("Net debt", `£${nf2.format(S.KSE6.values[li] / 1e6)}tn`, `end of ${monLabel(months[li])} · ${nf0.format(gdp)}% of GDP in ${gdpYear}`),
+        kpi(`Interest on debt, ${int.year}`, bn(int.interest / 1000), `${nf1.format(int.share)}p of every £1 of receipts`),
+        kpi(`Yield on new gilts, ${iss.years[ii]}`, pc(iss.avg_yield[ii]), `average on ${bn(iss.gross_bn[ii])} issued`),
+        kpi("10-year gilt yield", pc(Y.latest.IUDMNPY), `${Y.latest.date} · ${pc(Y.monthly.IUDMNPY[ym - 12])} a year earlier`)));
+    const body = el("div", {});
+    root.append(body);
+    build();
+    return root;
+
+    function build() {
+      body.replaceChildren();
+      const A = B.annual, from = borState.range === "all" ? 0 : A.years.indexOf(1997), ys = A.years.slice(from).map(String);
+      const cut = a => a.slice(from);
+      // 1. history
+      const m = borState.measure, c1 = chartBox();
+      const spec = { borrowing: [cut(A.borrowing).map(v => v == null ? null : v / 1000), v => bn(v), "£ billion of borrowing in the calendar year (cash terms)"],
+        gdp: [cut(A.gg_borrowing_gdp), v => pc(v), "general government net borrowing as a share of GDP (a slightly different measure from the headline, available from the 1990s)"],
+        debt: [cut(A.net_debt_gdp), v => pc(v), "public sector net debt (excluding public sector banks) as a share of GDP"] }[m];
+      body.append(card("Borrowing and debt over time", `By calendar year. Showing ${spec[2]}.`,
+        el("div", { class: "controls" }, select("bm", "Measure", [["borrowing", "Borrowing (£bn)"], ["gdp", "Borrowing (% of GDP)"], ["debt", "Net debt (% of GDP)"]], m, v => { borState.measure = v; build(); }),
+          select("br", "Period", [["all", "Since 1946"], ["1997", "Since 1997"]], borState.range, v => { borState.range = v; build(); })), c1));
+      const vals = spec[0], lo = vals.findIndex(v => v != null);
+      draw(() => lineChart(c1, { x: ys.slice(lo), fmt: spec[1], axisFmt: m === "borrowing" ? (v => "£" + nf0.format(v) + "bn") : (v => v + "%"), zero: true, title: "Borrowing history", series: [{ name: m === "debt" ? "Net debt" : "Borrowing", values: vals.slice(lo) }] }));
+
+      // 2. spending vs receipts
+      const c2 = chartBox();
+      body.append(card("Spending against income", "Borrowing is the gap between what government spends and what it receives. £ billion by calendar year, cash terms.", c2));
+      draw(() => lineChart(c2, { x: ys, fmt: v => bn(v), axisFmt: v => "£" + nf0.format(v) + "bn", zero: true, height: 260, title: "Spending and receipts",
+        series: [{ name: "Total spending", values: cut(A.spending).map(v => v == null ? null : v / 1000) }, { name: "Receipts (taxes and other income)", values: cut(A.receipts).map(v => v == null ? null : v / 1000), color: "var(--s3)" }] }));
+
+      // 3. who lends
+      const H = B.holdings, hq = H.quarters, hcut = borState.hold === "share";
+      const c3 = chartBox();
+      const series = H.groups.map(g => ({ name: g.name, values: g.values.map((v, i) => v == null ? null : hcut ? v / H.total[i] * 100 : v / 1000) }));
+      body.append(card("Who lends to the government", "Who holds the government's gilts, quarterly since 1987, valued at market prices. (Gilts are government bonds: lending to the government in exchange for interest.) A group can briefly hold a negative amount: UK banks were net short in some quarters from 2002, which is why the stack dips below zero and above 100% in places.",
+        el("div", { class: "controls" }, select("bh", "Show", [["share", "Share of all gilts (%)"], ["amount", "Amount held (£ billion)"]], borState.hold, v => { borState.hold = v; build(); })), c3));
+      const hx = hq.filter((_, i) => i % 4 === 0 || i === hq.length - 1);
+      draw(() => stackedBars(c3, { x: hq, series, fmt: hcut ? v => nf1.format(v) + "%" : v => "£" + nf0.format(v) + "bn", axisFmt: hcut ? v => v + "%" : v => "£" + nf0.format(v) + "bn", noTotal: hcut, title: "Gilt holdings by type of holder" }));
+      const lastQ = hq.at(-1), trs = H.shares.map(s => el("tr", {}, el("td", {}, s.name), el("td", { class: "n" }, bn(s.now / 1000)), el("td", { class: "n" }, pc(s.share)),
+        el("td", { class: "n" }, pc(s.share_1y)), el("td", { class: "n" }, pc(s.share_5y)), el("td", { class: "n" }, (s.change_1y >= 0 ? "+" : "−") + bn(Math.abs(s.change_1y) / 1000).replace("−", ""))));
+      body.append(card(`Holders at ${lastQ}`, "Share of all gilts now, one year ago and five years ago. The Bank of England bought gilts during the pandemic and 2008 crisis (quantitative easing) and is now selling them back; others have taken their place.",
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Holder", "Held", "Share now", "1 year ago", "5 years ago", "Change in a year"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))), el("tbody", {}, trs)))));
+
+      // 4. what it costs
+      const ycut = borState.yrange === "all" ? 0 : Y.months.length - +borState.yrange, c4 = chartBox();
+      const yser = Object.entries(Y.series).map(([k, nm]) => ({ name: nm + (k === "IUDSIZC" ? "" : " gilt"), values: Y.monthly[k].slice(ycut) }));
+      body.append(card("What it costs to borrow: gilt yields", "The yield is the interest rate investors demand to lend to the government for 5, 10 or 20 years (monthly averages, from the Bank of England). The inflation-linked yield is what is paid above inflation.",
+        el("div", { class: "controls" }, select("by", "Period", [["all", "Since 1997"], ["120", "Last 10 years"], ["36", "Last 3 years"]], borState.yrange, v => { borState.yrange = v; build(); })), c4));
+      draw(() => lineChart(c4, { x: Y.months.slice(ycut).map(monLabel), fmt: v => v == null ? "–" : pc(v), axisFmt: v => v + "%", zero: true, title: "Gilt yields", series: yser }));
+      const c5 = chartBox(), c6 = chartBox();
+      body.append(el("div", { class: "grid g2" },
+        card("The price actually paid on new borrowing", "Average yield on gilts the DMO sold each financial year (from 1998-99). Borrowing was cheap for a decade and rose sharply from 2022.", c5),
+        card("How much was borrowed through gilts", "Gilts sold each financial year, £ billion cash raised.", c6)));
+      draw(() => lineChart(c5, { x: iss.years, fmt: pc, axisFmt: v => v + "%", zero: true, height: 250, title: "Average gilt issuance yield", series: [{ name: "Average yield on new gilts", values: iss.avg_yield }] }));
+      draw(() => stackedBars(c6, { x: iss.years, series: [{ name: "Gilts sold", values: iss.gross_bn, color: "var(--s1)" }], fmt: v => bn(v), axisFmt: v => "£" + nf0.format(v) + "bn", noTotal: true, height: 250, title: "Gilt issuance" }));
+      const c7 = chartBox(), IS = B.interest_share;
+      body.append(card("What the interest takes", "Central government interest payments as a share of everything it receives, by financial year. It peaked in 2022-23 when inflation pushed up the cost of index-linked gilts.", c7));
+      draw(() => lineChart(c7, { x: IS.map(r => r.year), fmt: v => nf1.format(v) + "p", axisFmt: v => v + "p", zero: true, height: 230, title: "Interest as pence per £1 of receipts", series: [{ name: "Pence of each £1 of receipts spent on interest", values: IS.map(r => r.share) }] }));
+
+      // 5. month by month
+      const fr = Math.min(+borState.frange, months.length), f0 = months.length - fr, c8 = chartBox();
+      const fl = B.flags.filter(f => months.slice(f0).includes(f.month));
+      body.append(card("Borrowing month by month", "Cash borrowed each month, £ million (negative = a surplus). Tax arrives in lumps, so compare with the same month in other years.",
+        el("div", { class: "controls" }, select("bf", "Period", [["36", "Last 3 years"], ["120", "Last 10 years"], ["999", "Since 1997"]], borState.frange, v => { borState.frange = v; build(); })), c8));
+      draw(() => lineChart(c8, { x: months.slice(f0).map(monLabel), fmt: mm, axisFmt: mm, zero: true, title: "Monthly borrowing", series: [{ name: "Net borrowing", values: S.J5II.values.slice(f0) }], bands: fl.map(f => ({ x: monLabel(f.month) })) }));
+      if (fl.length) body.append(el("div", { class: "notice info" }, el("b", {}, `${fl.length} unusual month${fl.length > 1 ? "s" : ""} (shaded): `), fl.slice(0, 2).map(f => f.detail).join(" "), fl.length > 2 ? ` (+${fl.length - 2} more on the Unusual figures page.)` : ""));
+
+      // 6. explainer
+      body.append(card("Reading this page", null, el("ul", { class: "tight" },
+        el("li", {}, el("b", {}, "Borrowing vs debt. "), "Borrowing is a flow: what was added in a period. Debt is the stock built up over time. The figures here exclude the public sector banks, as the Treasury's headline totals do."),
+        el("li", {}, el("b", {}, "Calendar vs financial years. "), "ONS's long-run annual series is by calendar year; the financial-year figures (April to March) are added up from the monthly data."),
+        el("li", {}, el("b", {}, "Gilts are only part of the debt. "), "The holdings table covers gilts at market value. Government also borrows through Treasury bills, National Savings and other routes that are not shown here."),
+        el("li", {}, el("b", {}, "Holdings are by type of holder, "), "not named investors, and are published quarterly with a lag, so the latest quarter is a few months old."),
+        el("li", {}, el("b", {}, "Not covered yet. "), "Individual gilt auction results (how heavily each sale was oversubscribed) and the maturity profile of the debt are published by the DMO and could be added."))));
+    }
+  };
+
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   VIEWS.compare = () => {
@@ -824,6 +915,7 @@
     tiles.append(tileBtn(D.ons.flag_types.ons_monthly_jump.title, D.ons.flags.length, "in ONS monthly series · jump to section ↓", () => jumpTo("ons-flags")));
     tiles.append(tileBtn("Benefit fraud and error flags (DWP)", D.dwp.flags.length, "high rates, old measurements · jump to section ↓", () => jumpTo("dwp-flags")));
     if (D.proc) tiles.append(tileBtn("Government contract flags (Contracts Finder)", Object.values(D.proc.flag_counts).reduce((a, b) => a + b, 0), "direct awards, late notices · jump to section ↓", () => jumpTo("proc-summary")));
+    tiles.append(tileBtn("Unusual borrowing months", D.bor.flags.length, "year-on-year changes · jump to section ↓", () => jumpTo("bor-flags")));
     root.append(tiles);
     const listWrap = el("div", { id: "flag-list" });
     root.append(listWrap);
@@ -840,7 +932,7 @@
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
     fl.id = "fn-flags";
     root.append(fl);
-    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), ...(D.proc ? [procFlagsCard()] : []), benfordCard(), opacityCard());
+    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), ...(D.proc ? [procFlagsCard()] : []), borFlagsCard(), benfordCard(), opacityCard());
     return root;
 
     function rebuild() {
@@ -912,6 +1004,14 @@
         el("tbody", {}, top.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, P.types[f.type].title), el("td", {}, f.buyer), el("td", { class: "n" }, f.value_fmt), el("td", {}, f.detail)))))));
   }
 
+  function borFlagsCard() {
+    const fl = D.bor.flags;
+    return el("section", { class: "card", id: "bor-flags" }, el("h3", {}, "Borrowing: unusual months (since 2015)"),
+      el("p", { class: "sub" }, D.bor.flag_types.borrowing_jump.text + " A shock is reported once; the rebound a year later is treated as a base effect. See the Borrowing & debt page for the charts."),
+      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Month", "Borrowing", "What happened"].map((h, i) => el("th", { class: i === 2 ? "n" : "" }, h)))),
+        el("tbody", {}, fl.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, monLabel(f.month)), el("td", { class: "n" }, mm(f.value)), el("td", {}, f.detail)))))));
+  }
+
   const oState = { sev: 2, limit: 15 };
   function onsFlagsCard() {
     const out = el("section", { class: "card", id: "ons-flags" });
@@ -963,7 +1063,7 @@
     root.append(el("div", { class: "kpis" }, kpi("Pass", String(C.filter(c => c.status === "pass").length), "agree within rounding"), kpi("Discrepancy", String(C.filter(c => c.status === "warn").length), "outside rounding tolerance"), kpi("Documented gap", String(C.filter(c => c.status === "info").length), "explained in the source notes")));
     let lastSource = null;
     C.forEach(c => {
-      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "Contracts Finder": "Government contracts (Contracts Finder)", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
+      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "Contracts Finder": "Government contracts (Contracts Finder)", "Borrowing": "Borrowing and gilts (ONS, Debt Management Office)", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
       const unit = /£bn/.test(c.title) ? "£bn" : /£m/.test(c.title) ? "£m" : "";
       const tol = c.tolerance > 1e9 ? 0 : c.tolerance;
       const head = el("tr", {}, ["Year", "Expected", "Table shows", "Gap"].map((h, i) => el("th", { class: i ? "n" : "" }, h)));
@@ -985,7 +1085,7 @@
   VIEWS.method = () => {
     const P = D.flags.params, T = D.flags.types, T_ = D.hmrc.flag_types;
     const root = el("div", {}, el("h2", {}, "Method & sources"));
-    root.append(card("Sources (and only these)", "Every number comes from an official source: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK; the ONS Public Sector Finances dataset; and the Cabinet Office's Contracts Finder (award notices).",
+    root.append(card("Sources (and only these)", "Every number comes from an official source: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK; the ONS Public Sector Finances dataset; the Cabinet Office's Contracts Finder (award notices); and, for who lends to government and at what price, the Debt Management Office and the Bank of England.",
       el("ul", { class: "tight" }, D.meta.collections.map(u => el("li", {}, el("a", { href: u, rel: "noopener" }, u)))),
       el("p", { class: "small" }, "Files used (all downloaded and processed by pipeline/build.py in the project, so anyone can reproduce the data):"),
       el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, f.api ? "API" : "download")))))))));
@@ -1026,6 +1126,7 @@
           proc_unspec: "A buyer with at least 20 awards where 40% or more do not state the procedure used.",
         }[k] || ""), "see description")),
         trow("Pile-up below round values", "For each round-number value, awards in the 5% band just below are compared with the 5% band just above (equal widths on a log scale); a binomial z-score of 3 or more with at least 30 awards below is flagged.", "z ≥ 3; ≥ 30 awards"),
+        trow(D.bor.flag_types.borrowing_jump.title, "Year-on-year change in each month's net borrowing (in £, because borrowing crosses zero) scored against its own history since 1997; a shock is reported once, with the rebound a year later treated as a base effect.", "score ≥ 4; change ≥ £3bn"),
         trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
         trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));
@@ -1056,12 +1157,12 @@
   }
 
   async function boot() {
-    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons", "dwp", "procurement"];
+    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons", "dwp", "procurement", "borrowing"];
     const OPTIONAL = new Set(["procurement"]);   // only requested when meta.json says it was built
     try {
       D.meta = await loadJSON("meta");
       const res = await Promise.all(names.slice(1).map(n => (OPTIONAL.has(n) && !D.meta.has_procurement) ? null : loadJSON(n, OPTIONAL.has(n))));
-      [D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons, D.dwp, D.proc] = res;
+      [D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons, D.dwp, D.proc, D.bor] = res;
     } catch (e) {
       const hint = location.protocol === "file:"
         ? "You opened index.html directly from disk. Serve the folder instead, for example: python3 -m http.server -d site"

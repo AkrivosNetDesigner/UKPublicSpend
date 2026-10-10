@@ -1,5 +1,5 @@
 {
-  "_note": "Every file below is published on GOV.UK by HM Treasury, HMRC or DWP, or by the ONS or the Cabinet Office (Contracts Finder). HMRC, ONS, DWP and Contracts Finder were added at the user's request. The OBR was also requested but blocks automated downloads.",
+  "_note": "Every source below is official: HM Treasury, HMRC and DWP (GOV.UK), the ONS, the Cabinet Office (Contracts Finder), the UK Debt Management Office and the Bank of England. HMRC, ONS, DWP, Contracts Finder, the DMO and the Bank of England were added at the user's request. The OBR was also requested but blocks automated downloads.",
   "collections": [
     "https://www.gov.uk/government/collections/national-statistics-release",
     "https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa",
@@ -7,7 +7,9 @@
     "https://www.gov.uk/government/collections/measuring-tax-gaps",
     "https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances",
     "https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system",
-    "https://www.contractsfinder.service.gov.uk/"
+    "https://www.contractsfinder.service.gov.uk/",
+    "https://www.dmo.gov.uk/data/gilt-market/",
+    "https://www.bankofengland.co.uk/boeapps/database/"
   ],
   "release_page": "https://www.gov.uk/government/statistics/public-spending-statistics-release-july-2026",
   "files": {
@@ -90,6 +92,24 @@
       "publisher": "Cabinet Office",
       "title": "Contracts Finder OCDS API: award notices, downloaded by pipeline/fetch_contracts.py (organisation-level fields only; named contact people are discarded)",
       "url": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search"
+    },
+    "dmo_holdings": {
+      "release": "Gilt holdings by type of holder (quarterly, 1987 to 2026 Q1)",
+      "publisher": "Debt Management Office",
+      "title": "Distribution of gilt holdings (ONS financial accounts, republished by the DMO). The file address changes with each update, so the pipeline finds the current link on this page.",
+      "url": "https://www.dmo.gov.uk/data/gilt-market/"
+    },
+    "dmo_issuance": {
+      "release": "Average gilt issuance yields (annual, 1998-99 onwards)",
+      "publisher": "Debt Management Office",
+      "title": "Average yield on gilts issued each financial year, with the amount raised",
+      "url": "https://www.dmo.gov.uk/data/gilt-market/average-gilt-issuance-yields/"
+    },
+    "boe_yields": {
+      "release": "Gilt yields (daily, 1997 onwards)",
+      "publisher": "Bank of England",
+      "title": "Yield from British Government Securities: 5, 10 and 20 year nominal par yields (IUDSNPY, IUDMNPY, IUDLNPY) and 5 year inflation zero coupon (IUDSIZC)",
+      "url": "https://www.bankofengland.co.uk/boeapps/database/"
     }
   }
 }

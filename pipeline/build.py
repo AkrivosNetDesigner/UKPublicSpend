@@ -21,6 +21,7 @@ import hmrc as H  # noqa: E402
 import ons as O  # noqa: E402
 import dwp as W  # noqa: E402
 import procurement as PR  # noqa: E402
+import borrowing as B  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,6 +40,36 @@ def fetch(key, meta):
     with urllib.request.urlopen(req, timeout=120, context=ctx) as r:
         dest.write_bytes(r.read())
     return dest
+
+
+DMO = "https://www.dmo.gov.uk"
+BOE = ("https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes&Datefrom={frm}&Dateto=now&SeriesCodes={codes}"
+       "&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N")
+
+
+def fresh(dest, url, hours=20):
+    """Download unless a copy younger than `hours` exists (these sources update daily, quarterly or annually)."""
+    import time
+    if dest.exists() and dest.stat().st_size > 500 and time.time() - dest.stat().st_mtime < hours * 3600:
+        return dest
+    RAW.mkdir(exist_ok=True)
+    ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+    print("downloading", url[:110])
+    req = urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"})
+    with urllib.request.urlopen(req, timeout=120, context=ctx) as r:
+        dest.write_bytes(r.read())
+    return dest
+
+
+def discover(page, pattern):
+    """The DMO re-issues its spreadsheets under new file addresses, so find the current link on the page."""
+    import re
+    ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+    html = urllib.request.urlopen(urllib.request.Request(page, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read().decode("utf-8", "ignore")
+    links = [h for h in re.findall(r'href="([^"]+\.xls[x]?)"', html) if pattern in h]
+    if not links:
+        raise RuntimeError(f"no link containing {pattern!r} on {page}")
+    return links[0] if links[0].startswith("http") else DMO + links[0]
 
 
 def dump(name, obj):
@@ -154,7 +185,9 @@ def main():
 
     # ---- Contracts Finder award notices (downloaded separately by fetch_contracts.py)
     cache = RAW / "cf_awards.jsonl"
-    if cache.exists():
+    if "--skip-contracts" in sys.argv:
+        print("procurement: skipped (--skip-contracts); existing site/data/procurement.json left as is")
+    elif cache.exists():
         recs = [json.loads(line) for line in cache.open()]
         proc, pchecks = PR.build(recs)
         checks += pchecks
@@ -186,7 +219,6 @@ def main():
     dump("flags.json", {"params": A.PARAMS, "types": {k: {"title": v[0], "text": v[1]} for k, v in A.TYPE_INFO.items()},
                         "counts": counts, "flags": flags, "ranked": ranked[:150], "function_flags": fn_flags,
                         "benford": benford, "opacity": opacity, "revisions": rev_out, "releases": rel_keys})
-    dump("checks.json", {"checks": checks})
     dump("aggregates.json", {"rows": agg, "real_factor": real_factor})
     dump("functions.json", functions)
     dump("regions.json", regions)
@@ -200,6 +232,17 @@ def main():
 
     print(f"segments: {len(segs)}  flags: {len(flags)}  by type: {dict(counts)}")
     print("checks:", {c['id']: c['status'] for c in checks})
+    # ---- borrowing and debt: ONS annual series + DMO gilt holdings and issuance yields + Bank of England yields
+    annual = B.parse_ons_annual(paths["ons_pusf"])
+    holdings = B.parse_holdings(fresh(RAW / "dmo_holdings.xls", discover(DMO + "/data/gilt-market/", "gilt-holdings-data"), 24 * 7))
+    issuance = B.parse_issuance(fresh(RAW / "dmo_issuance.xls", discover(DMO + "/data/gilt-market/average-gilt-issuance-yields/", "average-gilt-issuance-yields"), 24 * 7))
+    yields = B.parse_yields([fresh(RAW / "boe_yields_nominal.csv", BOE.format(frm="01/Jan/1997", codes="IUDSNPY,IUDMNPY,IUDLNPY")),
+                             fresh(RAW / "boe_yields_inflation.csv", BOE.format(frm="01/Jan/2010", codes="IUDSIZC"))])
+    bor, bchecks = B.build(ons, annual, holdings, issuance, yields)
+    checks += bchecks
+    dump("borrowing.json", bor)
+    dump("checks.json", {"checks": checks})      # written last, once every source has contributed its checks
+
     print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags), " dwp flags:", len(dflags))
 
 
