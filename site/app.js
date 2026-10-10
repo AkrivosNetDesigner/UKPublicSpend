@@ -209,7 +209,7 @@
       if (q.length < 2) return;
       const hits = D.segments.segs.filter(s => s.n.toLowerCase().includes(q) || s.c.toLowerCase() === q).slice(0, 12);
       results.append(card(`${hits.length ? hits.length + (hits.length === 12 ? "+" : "") : "No"} matching lines`, null,
-        el("div", { class: "chips" }, hits.map(s => el("button", { class: "chip", onclick: () => { deptState.name = s.d; deptState.seg = s.c; document.getElementById("dsel").value = s.d; build(); document.getElementById("segcard")?.scrollIntoView({ behavior: "smooth" }); } }, `${s.n} · ${s.d}`)))));
+        el("div", { class: "chips" }, hits.map(s => el("button", { class: "chip", onclick: () => { deptState.name = s.d; deptState.seg = s.c; document.getElementById("dsel").value = s.d; build(); jumpTo("segcard"); } }, `${s.n} · ${s.d}`)))));
     }
     function build() {
       body.replaceChildren();
@@ -230,7 +230,7 @@
 
       // segments table
       const segs = D.segments.segs.filter(s => s.d === d.name).slice(0, 25);
-      const trs = segs.map(s => el("tr", { class: "click", onclick: () => { deptState.seg = s.c; build(); document.getElementById("segcard")?.scrollIntoView({ behavior: "smooth" }); },
+      const trs = segs.map(s => el("tr", { class: "click", onclick: () => { deptState.seg = s.c; build(); jumpTo("segcard"); },
         ...(deptState.seg === s.c ? { style: "background:var(--accent-bg)" } : {}) },
         el("td", {}, s.n, (flagsByCode().get(s.c) || []).some(f => f.sev >= 2) ? el("span", { class: "pill", style: "margin-left:6px" }, "flagged") : null),
         el("td", { class: "n" }, mm(adj(s.v).at(-1))), el("td", { class: "n" }, s.v[0] ? dpc((s.v.at(-1) / s.v[0] - 1) * 100) : "–"), el("td", {}, spark(s.v))));
@@ -254,6 +254,15 @@
       el("ul", { class: "tight" }, fl.map(f => el("li", {}, sevBadge(f.sev), " ", el("b", {}, D.flags.types[f.type].title), " · ", f.year, " – ", f.detail))))
       : el("p", { class: "small" }, "No automatic flags for this line."));
     return out;
+  }
+  /* Scroll to a section and flash it so the jump is visible (the sticky header is allowed for in CSS). */
+  function jumpTo(target) {
+    const e = typeof target === "string" ? document.getElementById(target) : target;
+    if (!e) return;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    e.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash");
+    e.addEventListener("animationend", () => e.classList.remove("flash"), { once: true });
   }
   function sevBadge(s) { return el("span", { class: `sev s${s}` }, el("i"), ["", "Low", "Medium", "High"][s]); }
 
@@ -584,30 +593,38 @@
       el("p", { class: "lede" }, "A set of automatic screening tests looks for patterns that auditors and investigative journalists commonly treat as red flags: very large jumps, figures later restated, lines appearing or vanishing, repeated or suspiciously round amounts, and opaque catch-all spending."),
       el("div", { class: "notice" }, el("b", {}, "Read this first. "), "These tests find numbers that are unusual, not wrongdoing. Almost every flag has an innocent explanation: a new scheme (the Energy Bills Support Scheme), a one-off settlement (Infected Blood Compensation), accounting valuation changes (student loans), or a reorganisation of departments. The data here are annual departmental totals, so they cannot show individual fraudulent payments or error rates. Their value is in telling you where to ask questions. Each test is explained on the “Method” page and all thresholds are published."));
     // type tiles
+    const tileBtn = (title, value, sub, onclick, extra = {}) => el("button", { class: "kpi", style: "text-align:left;cursor:pointer", onclick, ...extra },
+      el("div", { class: "l" }, title), el("div", { class: "v" }, String(value)), el("div", { class: "d" }, sub));
     const tiles = el("div", { class: "kpis" }, Object.entries(F.types).map(([k, t]) => {
-      const n = F.counts[k] || 0;
-      return el("button", { class: "kpi", style: "text-align:left;cursor:pointer", "aria-pressed": String(fState.type === k), onclick: () => { fState.type = fState.type === k ? "" : k; fState.limit = 40; rebuild(); } },
-        el("div", { class: "l" }, t.title), el("div", { class: "v" }, k === "function_jump" ? String(F.function_flags.length) : String(n)), el("div", { class: "d" }, k === "function_jump" ? "in the function tables" : "in departmental lines"));
+      if (k === "function_jump") {   // lives in its own table, not the departmental-line list
+        return tileBtn(t.title, F.function_flags.length, "in the function tables · jump to table ↓", () => jumpTo("fn-flags"));
+      }
+      return tileBtn(t.title, F.counts[k] || 0, "in departmental lines · show list ↓", () => {
+        const on = fState.type !== k;
+        fState.type = on ? k : "";
+        if (on) fState.sev = 1;          // the tile counts every flag of this type, so the list must too
+        fState.limit = 40; rebuild();
+        jumpTo(listWrap);
+      }, { "aria-pressed": String(fState.type === k) });
     }));
     const hf = D.hmrc.flags, hTiles = [["monthly_jump", "Unusual change in monthly tax receipts"], ["taxgap_revision", "Tax gap estimate later revised"]];
-    hTiles.forEach(([k, t]) => tiles.append(el("button", { class: "kpi", style: "text-align:left;cursor:pointer", onclick: () => document.getElementById("hmrc-flags").scrollIntoView({ behavior: "smooth" }) },
-      el("div", { class: "l" }, t), el("div", { class: "v" }, String(hf.filter(f => f.type === k).length)), el("div", { class: "d" }, "in HMRC statistics"))));
-    tiles.append(el("button", { class: "kpi", style: "text-align:left;cursor:pointer", onclick: () => document.getElementById("ons-flags").scrollIntoView({ behavior: "smooth" }) },
-      el("div", { class: "l" }, D.ons.flag_types.ons_monthly_jump.title), el("div", { class: "v" }, String(D.ons.flags.length)), el("div", { class: "d" }, "in ONS monthly series")));
+    hTiles.forEach(([k, t]) => tiles.append(tileBtn(t, hf.filter(f => f.type === k).length, "in HMRC statistics · jump to section ↓", () => jumpTo("hmrc-flags"))));
+    tiles.append(tileBtn(D.ons.flag_types.ons_monthly_jump.title, D.ons.flags.length, "in ONS monthly series · jump to section ↓", () => jumpTo("ons-flags")));
     root.append(tiles);
-    const listWrap = el("div", {});
+    const listWrap = el("div", { id: "flag-list" });
     root.append(listWrap);
     rebuild();
     // priority list
     const pr = card("Priority review list", "Lines with several kinds of flag at once, weighted by severity. This is where a reader with limited time should start.",
       el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["#", "Line", "Department", "Largest amount", "Score", "Flags"].map((h, i) => el("th", { class: i === 3 || i === 4 ? "n" : "" }, h)))),
-        el("tbody", {}, F.ranked.slice(0, 25).map((r, i) => el("tr", { class: "click", onclick: () => { fState.q = r.name; fState.type = ""; fState.sev = 1; fState.dept = ""; rebuild(); listWrap.scrollIntoView({ behavior: "smooth" }); } },
+        el("tbody", {}, F.ranked.slice(0, 25).map((r, i) => el("tr", { class: "click", onclick: () => { fState.q = r.name; fState.type = ""; fState.sev = 1; fState.dept = ""; rebuild(); jumpTo(listWrap); } },
           el("td", {}, i + 1), el("td", {}, r.name), el("td", {}, r.dept), el("td", { class: "n" }, mm(r.max_m)), el("td", { class: "n" }, r.score), el("td", {}, r.types.map(t => F.types[t].title).join(", "))))))));
     root.append(pr);
     // function-level
     const fl = card("Unusual moves in whole functions", "Real-terms year-on-year changes that are extreme against that function's own history (Table 4.3). Many cluster in 2020-21 (Covid-19 response) and 2021-23 (debt interest on inflation-linked gilts).",
       el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Year", "What happened"].map(h => el("th", {}, h)))),
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
+    fl.id = "fn-flags";
     root.append(fl);
     root.append(hmrcFlagsCard(), onsFlagsCard(), benfordCard(), opacityCard());
     return root;
@@ -617,11 +634,10 @@
       const depts = [...new Set(F.flags.map(f => f.dept))].sort();
       const filtered = F.flags.filter(f => (!fState.type || f.type === fState.type) && f.sev >= fState.sev && (!fState.dept || f.dept === fState.dept) &&
         (!fState.q || (f.name + " " + f.dept + " " + f.code).toLowerCase().includes(fState.q.toLowerCase())));
-      if (fState.type === "function_jump") { filtered.length = 0; }
       const ctl = el("div", { class: "controls" },
         select("fs", "Minimum severity", [["3", "High only"], ["2", "Medium and above"], ["1", "Everything"]], String(fState.sev), v => { fState.sev = +v; fState.limit = 40; rebuild(); }),
         select("fd", "Department", [["", "All departments"], ...depts.map(d => [d, d])], fState.dept, v => { fState.dept = v; fState.limit = 40; rebuild(); }),
-        select("ft", "Type", [["", "All types"], ...Object.entries(F.types).filter(([k]) => k !== "function_jump").map(([k, t]) => [k, t.title])], fState.type === "function_jump" ? "" : fState.type, v => { fState.type = v; fState.limit = 40; rebuild(); }),
+        select("ft", "Type", [["", "All types"], ...Object.entries(F.types).filter(([k]) => k !== "function_jump").map(([k, t]) => [k, t.title])], fState.type, v => { fState.type = v; fState.limit = 40; rebuild(); }),
         el("label", {}, "Search", el("input", { type: "search", value: fState.q, placeholder: "line, department, code", oninput: e => { fState.q = e.target.value; fState.limit = 40; clearTimeout(rebuild.t); rebuild.t = setTimeout(rebuild, 250); } })));
       const info = fState.type && F.types[fState.type] ? el("p", { class: "small" }, el("b", {}, F.types[fState.type].title + ": "), F.types[fState.type].text) : null;
       const rows = filtered.slice(0, fState.limit).flatMap((f, i) => {
