@@ -87,6 +87,42 @@
     }
   },
   "apis": {
+    "mhclg_capital": {
+      "release": "Capital expenditure and receipts time series 2018-19 to 2024-25",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "title": "Local authority capital expenditure and receipts in England: final outturn time series (capital spending on roads used for the What it buys pairing)",
+      "url": "https://assets.publishing.service.gov.uk/media/69c2a55b13f1436476e4436c/Capital_time_series_data_wide_24_03_26.csv"
+    },
+    "defra_waste": {
+      "release": "Local authority collected waste management 2024-25",
+      "publisher": "Defra",
+      "title": "Local authority collected waste statistics: local authority data, Table 3 selected indicators (recycling rate, residual waste per household)",
+      "url": "https://assets.publishing.service.gov.uk/media/69c68a6578ca1aa5a63609c3/LA_and_Regional_Spreadsheet_2024-25.ods"
+    },
+    "dft_road_condition": {
+      "release": "Road condition statistics RDC0120 (to March 2025)",
+      "publisher": "Department for Transport",
+      "title": "Percentage of local A road and motorway length, and of B and C roads, where maintenance should have been considered, by local authority",
+      "url": "https://assets.publishing.service.gov.uk/media/696facb9f6aa424b452e33a5/rdc0120.ods"
+    },
+    "dft_road_length": {
+      "release": "Road length statistics RDL0202 (2025)",
+      "publisher": "Department for Transport",
+      "title": "Road length (kilometres) by road type and local authority, used to put road spending per kilometre",
+      "url": "https://assets.publishing.service.gov.uk/media/697b6213aacd0dc9777b4fc9/rdl0202.ods"
+    },
+    "imd_lower": {
+      "release": "English indices of deprivation 2025",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "title": "IoD2025 File 10: Local authority district summaries (lower-tier), average score; used to allow for need",
+      "url": "https://assets.publishing.service.gov.uk/media/6917412ebc34c86ce4e6e7fc/File_10_-_IoD2025_Local_Authority_District_Summaries__lower-tier__v2.xlsx"
+    },
+    "imd_upper": {
+      "release": "English indices of deprivation 2025",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "title": "IoD2025 File 11: Local authority district summaries (upper-tier), average score; used to allow for need at county councils",
+      "url": "https://assets.publishing.service.gov.uk/media/6917414ab49cc44345161802/File_11_-_IoD2025_Local_Authority_District_Summaries__upper-tier__v2.xlsx"
+    },
     "mhclg_outturn": {
       "release": "Revenue outturn multi-year data set v4 (2017-18 to 2025-26)",
       "publisher": "Ministry of Housing, Communities and Local Government",

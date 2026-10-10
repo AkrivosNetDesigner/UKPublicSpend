@@ -23,6 +23,7 @@ import dwp as W  # noqa: E402
 import procurement as PR  # noqa: E402
 import borrowing as B  # noqa: E402
 import councils as L  # noqa: E402
+import outcomes as OC  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +55,14 @@ def fresh(dest, url, hours=20):
     if dest.exists() and dest.stat().st_size > 500 and time.time() - dest.stat().st_mtime < hours * 3600:
         return dest
     RAW.mkdir(exist_ok=True)
+    if callable(url):                      # a link that has to be discovered: only look it up when a download is needed
+        try:
+            url = url()
+        except Exception as e:
+            if dest.exists() and dest.stat().st_size > 500:
+                print(f"could not find a newer link for {dest.name} ({e}); using the copy already downloaded")
+                return dest
+            raise
     ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
     print("downloading", url[:110])
     req = urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"})
@@ -235,8 +244,8 @@ def main():
     print("checks:", {c['id']: c['status'] for c in checks})
     # ---- borrowing and debt: ONS annual series + DMO gilt holdings and issuance yields + Bank of England yields
     annual = B.parse_ons_annual(paths["ons_pusf"])
-    holdings = B.parse_holdings(fresh(RAW / "dmo_holdings.xls", discover(DMO + "/data/gilt-market/", "gilt-holdings-data"), 24 * 7))
-    issuance = B.parse_issuance(fresh(RAW / "dmo_issuance.xls", discover(DMO + "/data/gilt-market/average-gilt-issuance-yields/", "average-gilt-issuance-yields"), 24 * 7))
+    holdings = B.parse_holdings(fresh(RAW / "dmo_holdings.xls", lambda: discover(DMO + "/data/gilt-market/", "gilt-holdings-data"), 24 * 7))
+    issuance = B.parse_issuance(fresh(RAW / "dmo_issuance.xls", lambda: discover(DMO + "/data/gilt-market/average-gilt-issuance-yields/", "average-gilt-issuance-yields"), 24 * 7))
     yields = B.parse_yields([fresh(RAW / "boe_yields_nominal.csv", BOE.format(frm="01/Jan/1997", codes="IUDSNPY,IUDMNPY,IUDLNPY")),
                              fresh(RAW / "boe_yields_inflation.csv", BOE.format(frm="01/Jan/2010", codes="IUDSIZC"))])
     bor, bchecks = B.build(ons, annual, holdings, issuance, yields)
@@ -250,6 +259,12 @@ def main():
     checks += L.checks(ro, lc, lpop)
     eng = {r["year"]: L._year_vec(r["v"]) for r in ro if r["code"] == "E92000001"}
     dump("councils.json", L.export(lc, lyears, lpy, lmetrics, lstats, lflags, lpop, england=eng))
+    # ---- what it buys: council spending paired with results (waste, roads), allowing for deprivation
+    oc = OC.build(RAW / "revenue_outturn.csv", fresh(RAW / "capital_outturn.csv", lsrc["mhclg_capital"]["url"], 24 * 30), lpop,
+                  fresh(RAW / "waste_la.ods", lsrc["defra_waste"]["url"], 24 * 30), fresh(RAW / "rdc0120.ods", lsrc["dft_road_condition"]["url"], 24 * 30),
+                  fresh(RAW / "rdl0202.ods", lsrc["dft_road_length"]["url"], 24 * 30), fresh(RAW / "imd_lower.xlsx", lsrc["imd_lower"]["url"], 24 * 90),
+                  fresh(RAW / "imd_upper.xlsx", lsrc["imd_upper"]["url"], 24 * 90), {k: {"name": v["name"], "group": v["group"], "cls": v["cls"]} for k, v in lc.items()})
+    dump("outcomes.json", oc)
     dump("checks.json", {"checks": checks})      # written last, once every source has contributed its checks
 
     print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags), " dwp flags:", len(dflags))
