@@ -78,6 +78,29 @@
   addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => draws.forEach(f => f()), 150); });
   addEventListener("hashchange", route);
 
+  /* Keep the page where it is while a control rebuilds part of the view.
+   * Views rebuild by emptying a container and refilling it; charts measure the page as they draw, so the page is
+   * briefly short and the browser clamps the scroll position back to the top. Holding the height of <main> for
+   * the duration prevents that. The control you used is also recreated, so focus (and caret) is put back. */
+  function holdView() {
+    const a = document.activeElement;
+    const st = { id: a && a.id, s: a && a.selectionStart, e: a && a.selectionEnd };
+    main.style.minHeight = main.offsetHeight + "px";
+    return function release() {
+      const el = st.id && document.getElementById(st.id);
+      if (el && el !== document.activeElement) {
+        el.focus({ preventScroll: true });
+        if (st.s != null && typeof el.setSelectionRange === "function") { try { el.setSelectionRange(st.s, st.e); } catch (_) { /* not a text input */ } }
+      }
+      main.style.minHeight = "";
+    };
+  }
+  ["change", "click"].forEach(type => main.addEventListener(type, ev => {
+    if (ev.target.closest && ev.target.closest("a")) return;   // real navigation: route() resets the scroll itself
+    setTimeout(holdView(), 0);                                   // release once the handlers (and chart drawing) are done
+  }, true));
+  addEventListener("hashchange", () => { main.style.minHeight = ""; });
+
   /* --------------------------------------------------------------- views */
   const VIEWS = {};
 
@@ -638,7 +661,7 @@
         select("fs", "Minimum severity", [["3", "High only"], ["2", "Medium and above"], ["1", "Everything"]], String(fState.sev), v => { fState.sev = +v; fState.limit = 40; rebuild(); }),
         select("fd", "Department", [["", "All departments"], ...depts.map(d => [d, d])], fState.dept, v => { fState.dept = v; fState.limit = 40; rebuild(); }),
         select("ft", "Type", [["", "All types"], ...Object.entries(F.types).filter(([k]) => k !== "function_jump").map(([k, t]) => [k, t.title])], fState.type, v => { fState.type = v; fState.limit = 40; rebuild(); }),
-        el("label", {}, "Search", el("input", { type: "search", value: fState.q, placeholder: "line, department, code", oninput: e => { fState.q = e.target.value; fState.limit = 40; clearTimeout(rebuild.t); rebuild.t = setTimeout(rebuild, 250); } })));
+        el("label", {}, "Search", el("input", { type: "search", id: "fq", value: fState.q, placeholder: "line, department, code", oninput: e => { fState.q = e.target.value; fState.limit = 40; clearTimeout(rebuild.t); rebuild.t = setTimeout(() => { const release = holdView(); rebuild(); release(); }, 250); } })));
       const info = fState.type && F.types[fState.type] ? el("p", { class: "small" }, el("b", {}, F.types[fState.type].title + ": "), F.types[fState.type].text) : null;
       const rows = filtered.slice(0, fState.limit).flatMap((f, i) => {
         const id = f.code + f.type + f.year + (f.to_release || "");
