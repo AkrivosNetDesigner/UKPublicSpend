@@ -105,6 +105,14 @@ class Bunching(unittest.TestCase):
         self.assertTrue(res[100_000]["flag"])
         self.assertFalse(res.get(200_000, {"flag": False})["flag"])
 
+class Implausible(unittest.TestCase):
+    def test_huge_value_flagged_and_left_out_of_totals(self):
+        recs = [rec(1, av=200_000_000_000), rec(2, av=50_000)]
+        out, _ = P.build(recs)
+        self.assertEqual(out["summary"]["total_value"], 50_000)
+        self.assertEqual(out["summary"]["quality"]["excluded"]["value of £10bn or more (looks like a data-entry error)"], 1)
+        self.assertIn("proc_implausible", out["flag_counts"])
+
 
 if __name__ == "__main__":
     unittest.main()

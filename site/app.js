@@ -1345,6 +1345,7 @@
           proc_long: "Contract term over 10 years, for awards of £1m or more.",
           proc_split: "Three or more non-framework awards to the same supplier by the same buyer within 90 days, together £0.15m or more.",
           proc_conc: "A buyer with at least 20 awards and £5m of awards where one supplier received 40% or more of the value.",
+          proc_implausible: "A single award of £10bn or more; excluded from totals and shown as a data-entry error.",
           proc_unspec: "A buyer with at least 20 awards where 40% or more do not state the procedure used.",
         }[k] || ""), "see description")),
         trow("Pile-up below round values", "For each round-number value, awards in the 5% band just below are compared with the 5% band just above (equal widths on a log scale); a binomial z-score of 3 or more with at least 30 awards below is flagged.", "z ≥ 3; ≥ 30 awards"),

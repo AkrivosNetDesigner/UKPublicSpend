@@ -23,6 +23,7 @@ PARAMS = {
     "split_n": 3, "split_window_days": 90, "split_min_total_m": 0.15,
     "conc_min_awards": 20, "conc_min_value_m": 5.0, "conc_share": 0.40,
     "unspec_min_awards": 20, "unspec_share": 0.40,
+    "implausible_m": 10000.0,                                                  # one award this large (£10bn) is almost always a typing error
     "bunch_min_below": 30, "bunch_z": 3.0, "bunch_window": 0.05,
 }
 
@@ -37,6 +38,8 @@ TYPE_INFO = {
     "proc_split": ("Repeat awards to one supplier in a short window",
                    "The same buyer made several separate awards to the same supplier within a few months, which can be legitimate or can be a contract split to stay below a limit."),
     "proc_conc": ("One supplier dominates a buyer's spend", "A single supplier received a large share of a buyer's awarded value."),
+    "proc_implausible": ("Value looks like a data-entry error",
+                         "A single award of £10bn or more is far larger than almost any real contract on Contracts Finder (often an extra zero, or a framework's lifetime ceiling typed as a contract value). It is left out of every total and chart on this page so one entry cannot distort them."),
     "proc_unspec": ("Buyer rarely states how it bought", "Many of the buyer's award notices do not say which procedure was used."),
 }
 SEV_NAMES = {1: "Low", 2: "Medium", 3: "High"}
@@ -310,8 +313,15 @@ def checks(rows, summary, raw_count):
 
 def build(records, top_flags=300):
     rows, excluded = prepare(records)
+    bad = [r for r in rows if m(r["av"]) >= PARAMS["implausible_m"]]
+    rows = [r for r in rows if m(r["av"]) < PARAMS["implausible_m"]]
+    if bad:
+        excluded["value of £10bn or more (looks like a data-entry error)"] = len(bad)
     summary = summarise(rows, excluded)
     flags = record_flags(rows) + repeat_award_flags(rows)
+    flags += [{"buyer": r["buyer"], "title": r["title"], "value": r["av"], "date": r["pub"], "url": r.get("url"), "supplier": r["sname"] if r["sorg"] else None,
+               "method": r.get("pmd"), "type": "proc_implausible", "sev": 3,
+               "detail": f"{r['buyer']}: “{r['title']}” is published with a value of {fmt(r['av'])}, which is almost certainly a mistake. It is excluded from the totals on this page."} for r in bad]
     buyers, bflags = buyer_table(rows)
     flags += bflags
     flags.sort(key=lambda f: (-f["sev"], -(f["value"] or 0)))
