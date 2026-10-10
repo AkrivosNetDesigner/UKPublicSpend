@@ -87,6 +87,18 @@
     }
   },
   "apis": {
+    "mhclg_outturn": {
+      "release": "Revenue outturn multi-year data set v4 (2017-18 to 2025-26)",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "title": "Local authority revenue expenditure and financing, England: revenue outturn time series (£ thousand, every council, 13 service lines and reserves)",
+      "url": "https://assets.publishing.service.gov.uk/media/6ab26ffffe72ed1e2b02ee74/Revenue_Outturn_time_series_data_v4.csv"
+    },
+    "ons_population": {
+      "release": "Mid-2024 population estimates",
+      "publisher": "Office for National Statistics",
+      "title": "Population estimates by local authority and single year of age, used to put council spending per resident, per child and per person aged 65+",
+      "url": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/populationestimatesforukenglandandwalesscotlandandnorthernireland/mid2024/mye24tablesuk.xlsx"
+    },
     "contracts_finder": {
       "release": "Contracts Finder award notices (recent days; see window on the Contracts page)",
       "publisher": "Cabinet Office",

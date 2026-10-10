@@ -22,6 +22,7 @@ import ons as O  # noqa: E402
 import dwp as W  # noqa: E402
 import procurement as PR  # noqa: E402
 import borrowing as B  # noqa: E402
+import councils as L  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -241,6 +242,14 @@ def main():
     bor, bchecks = B.build(ons, annual, holdings, issuance, yields)
     checks += bchecks
     dump("borrowing.json", bor)
+    # ---- local councils (England): MHCLG revenue outturn + ONS mid-year population
+    lsrc = src["apis"]
+    ro = L.read_outturn(fresh(RAW / "revenue_outturn.csv", lsrc["mhclg_outturn"]["url"], 24 * 30))[0]
+    lpop = L.read_population(fresh(RAW / "mye_population.xlsx", lsrc["ons_population"]["url"], 24 * 30))
+    lc, lyears, lpy, lmetrics, lstats, lflags = L.build(ro, lpop)
+    checks += L.checks(ro, lc, lpop)
+    eng = {r["year"]: L._year_vec(r["v"]) for r in ro if r["code"] == "E92000001"}
+    dump("councils.json", L.export(lc, lyears, lpy, lmetrics, lstats, lflags, lpop, england=eng))
     dump("checks.json", {"checks": checks})      # written last, once every source has contributed its checks
 
     print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags), " dwp flags:", len(dflags))
