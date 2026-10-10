@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["councils", "Local councils"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -56,7 +56,7 @@
   };
 
   /* ---------------------------------------------------------------- shell */
-  const NAV_GROUPS = [["", ["overview"]], ["Where money goes", ["functions", "departments", "regions", "compare"]],
+  const NAV_GROUPS = [["", ["overview"]], ["Where money goes", ["functions", "departments", "regions", "councils", "compare"]],
     ["Money in and debt", ["tax", "monthly", "borrowing"]], ["Integrity and scrutiny", ["benefits", "procurement", "flags", "checks"]], ["About", ["method"]]];
   function renderNav(active) {
     const nav = document.getElementById("nav"), label = Object.fromEntries(ROUTES);
@@ -845,6 +845,116 @@
 
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
+  /* ---------- Local councils (England) */
+  const lcState = { code: "", svc: "asc", group: "allpurpose", ftype: "", fsev: 2, flimit: 15 };
+  VIEWS.councils = () => {
+    const root = el("div", {}, el("h2", {}, "Local councils in England"),
+      el("p", { class: "lede" }, "Councils spend around a fifth of all public money on social care, children's services, roads, waste, housing and more. This page uses each council's own return to the government (revenue outturn) with ONS population estimates to compare councils that do the same job."),
+      el("p", { class: "sub" }, "Loading council data…"));
+    loadJSON("councils").then(d => { D.lc = d; if (!main.contains(root)) return; root.replaceChildren(...lcBody()); }, e => root.append(el("div", { class: "notice" }, "Could not load council data: " + e.message)));
+    return root;
+  };
+  function lcBody() {
+    const L = D.lc, F = Object.fromEntries(L.fields.map((f, i) => [f, i])), py = L.peer_year, ly = L.years[L.years.length - 1];
+    const svcs = L.services, label = Object.fromEntries(svcs.map(s => [s.key, s.label])), denom = Object.fromEntries(svcs.map(s => [s.key, s.denom]));
+    const dName = { pop: "per resident", age0_17: "per child (0-17)", age65: "per person aged 65+" };
+    const stat = (k, g) => L.stats.find(s => s.key === k && s.group === g);
+    const real = (v, y) => v == null ? null : v * rf(y) / 1000;                 // £ thousand -> £ million, latest prices
+    const byCode = new Map(L.councils.map(c => [c.code, c]));
+    const val = (c, y, k) => { const v = c.y[y]; return v ? v[F[k]] : null; };
+    const unit = (c, y, k) => { const v = val(c, y, k), d = c[denom[k] || "pop"]; return v == null || !d ? null : v * 1000 / d; };
+    const eng = L.england, e1 = eng[ly], e0 = eng[L.years[L.years.length - 2]];
+    const nSub = L.councils.filter(c => c.y[py]).length;
+    const nFlag = L.flags.filter(f => f.sev === 3).length;
+    const svcOrder = svcs.map(s => s.key).sort((a, b) => (e1[F[b]] || 0) - (e1[F[a]] || 0));
+    const top = svcOrder[0];
+    const out = [];
+    out.push(el("p", { class: "lede" }, `Figures are net current expenditure by service, from the Ministry of Housing, Communities and Local Government (MHCLG) revenue outturn returns, ${L.years[0]} to ${ly}. ${ly} is provisional and ${nSub} councils have submitted for ${py}. Spending is shown in ${ly} prices using the GDP deflator. Population is ONS ${L.population_year}.`));
+    out.push(el("div", { class: "notice" }, el("b", {}, "A screening tool, not an accusation. "), "Councils differ in the people they serve (age, deprivation, rurality, London costs), in whether they run a service themselves or share it, and in accounting choices. A council far from its peers is a prompt to ask why. Only England is covered; Scotland, Wales and Northern Ireland publish on different systems."));
+    out.push(el("div", { class: "kpis" },
+      kpi("Council service spending", mm(real(e1[F.totsx], ly)), `${ly} · all English councils incl. police and fire`),
+      kpi("Change in real terms", dpc((e1[F.totsx] * rf(ly) / (e0[F.totsx] * rf(L.years[L.years.length - 2])) - 1) * 100), `vs ${L.years[L.years.length - 2]}`),
+      kpi("Largest service", label[top], `${mm(real(e1[F[top]], ly))} in ${ly}`),
+      kpi("Councils with returns", String(nSub), `for ${py}`),
+      kpi("Schools deficits (DSG)", mm(-L.councils.reduce((a, c) => a + Math.min(0, val(c, py, "dsg") || 0), 0) / 1000), "held on councils' books, " + py),
+      kpi("High-priority flags", String(nFlag), "councils to look at first")));
+    // England by service over time
+    const c1 = chartBox();
+    out.push(card("Where English council spending goes", `Net service spending by service, £ million in ${ly} prices. Adult social care and children's services are the fastest-growing.`, c1));
+    draw(() => stackedBars(c1, { x: L.years, fmt: mm, axisFmt: mm, title: "English council spending by service",
+      series: topPlusOther(svcOrder.map(k => ({ name: label[k], values: L.years.map(y => eng[y] ? real(eng[y][F[k]], y) : null) })), 6, L.years) }));
+    // finder
+    const prof = el("div", { id: "lc-profile" });
+    const sel = select("lcsel", "Choose a council", [["", "Select a council…"], ...L.councils.map(c => [c.code, c.name])], lcState.code, v => { lcState.code = v; paintProfile(); });
+    out.push(card("Council profile", "Pick a council to see its spending by service against similar councils: districts with districts, counties with counties, unitary/metropolitan/London councils together.", el("div", { class: "controls" }, sel), prof));
+    function paintProfile() {
+      prof.replaceChildren();
+      const c = byCode.get(lcState.code);
+      if (!c) return;
+      const g = c.group, yr = c.y[py] ? py : Object.keys(c.y).sort().pop();
+      const rows = svcs.filter(s => val(c, yr, s.key) != null && Math.abs(val(c, yr, s.key)) > 0).map(s => {
+        const st = stat(s.key, g), u = unit(c, yr, s.key);
+        return { s, st, u, tot: val(c, yr, s.key), d: st && u != null ? (u / st.median - 1) * 100 : null };
+      });
+      const c2 = chartBox();
+      prof.append(el("p", {}, el("b", {}, c.name), ` · ${c.cls} · population ${c.pop ? nf0.format(c.pop) : "unknown"} · compared with ${L.groups[g]} · ${yr}${yr !== py ? " (latest year it submitted)" : ""}`));
+      if (c.missing.length) prof.append(el("div", { class: "notice" }, `No return received for ${c.missing.join(", ")}.`));
+      prof.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Service", "Total", "Rate", "Typical", "Range (10th–90th)", "vs typical"].map((h, i) => el("th", { class: i > 0 && i < 4 || i === 5 ? "n" : "" }, h)))),
+        el("tbody", {}, rows.map(r => el("tr", {}, el("td", {}, r.s.label), el("td", { class: "n" }, mm(real(r.tot, yr))),
+          el("td", { class: "n" }, r.u == null ? "–" : `£${nf0.format(r.u)}`), el("td", { class: "n" }, r.st ? `£${nf0.format(r.st.median)}` : "–"),
+          el("td", {}, r.st ? rangeBar(r.u, r.st) : "–"), el("td", { class: "n" }, r.d == null ? "–" : dpc(r.d))))))));
+      prof.append(el("p", { class: "small" }, "Rates are £ per resident, except adult social care (per person aged 65+) and children's social care and education (per child aged 0-17). “Typical” is the median council of the same kind."));
+      const ys = L.years.filter(y => c.y[y]);
+      prof.append(el("h4", {}, "Total service spending over time (real terms)"), c2);
+      draw(() => lineChart(c2, { x: ys, fmt: mm, axisFmt: mm, zero: true, title: c.name + " service spending",
+        series: [{ name: c.name, values: ys.map(y => real(val(c, y, "totsx"), y)) }] }));
+      const res = val(c, yr, "reserves"), dsg = val(c, yr, "dsg"), nr = val(c, yr, "netrev");
+      prof.append(el("div", { class: "kpis" }, kpi("Net revenue spending", mm((nr || 0) / 1000), yr), kpi("Usable reserves", mm((res || 0) / 1000), nr ? pc(res / nr * 100) + " of net spending" : ""),
+        kpi("Schools funding (DSG) balance", mm((dsg || 0) / 1000), dsg < 0 ? "deficit" : "surplus or none"), kpi("Net interest paid", mm((val(c, yr, "netint") || 0) / 1000), nr ? pc(val(c, yr, "netint") / nr * 100) + " of net spending" : "")));
+      const fl = L.flags.filter(f => f.code === c.code);
+      if (fl.length) prof.append(el("ul", { class: "tight" }, fl.map(f => el("li", {}, sevBadge(f.sev), " ", el("b", {}, L.flag_types[f.type].title), " · ", f.year, " – ", f.detail))));
+    }
+    function rangeBar(u, st) {
+      const lo = Math.min(st.p10, u ?? st.p10), hi = Math.max(st.p90, u ?? st.p90), X = v => ((v - lo) / ((hi - lo) || 1) * 100).toFixed(1) + "%";
+      return el("div", { class: "rangebar", title: `Typical range £${nf0.format(st.p10)} to £${nf0.format(st.p90)}` },
+        el("i", { class: "band", style: `left:${X(st.p10)};width:calc(${X(st.p90)} - ${X(st.p10)})` }), el("i", { class: "med", style: `left:${X(st.median)}` }), el("i", { class: "pt", style: `left:${u == null ? X(st.median) : X(u)}` }));
+    }
+    // league table
+    const lt = el("div", { id: "lc-league" });
+    out.push(card("League tables", "Who spends most and least on a service, compared with councils of the same kind. High is not bad and low is not good: it shows where to ask why.",
+      el("div", { class: "controls" },
+        select("lsv", "Service", svcs.map(s => [s.key, s.label]), lcState.svc, v => { lcState.svc = v; paintLeague(); }),
+        select("lgr", "Councils", Object.entries(L.groups).map(([k, t]) => [k, t[0].toUpperCase() + t.slice(1)]), lcState.group, v => { lcState.group = v; paintLeague(); })), lt));
+    function paintLeague() {
+      const k = lcState.svc, g = lcState.group;
+      const items = L.councils.filter(c => c.group === g && c.y[py]).map(c => ({ label: c.name, value: unit(c, py, k) })).filter(i => i.value != null && i.value > 0).sort((a, b) => b.value - a.value);
+      const ch = items.slice(0, 12).concat(items.length > 24 ? items.slice(-12) : []);
+      const cb = chartBox();
+      lt.replaceChildren(el("p", { class: "sub" }, `${label[k]}, £ ${dName[denom[k]]}, ${py}. Top 12 and bottom 12 of ${items.length} councils.`), cb);
+      draw(() => barChart(cb, { items: ch, fmt: v => "£" + nf0.format(v), title: label[k] + " league table" }));
+    }
+    paintLeague();
+    // flags
+    const fw = el("div", { id: "lc-flags" });
+    out.push(el("section", { class: "card", id: "lc-flagcard" }, el("h3", {}, "Councils worth a closer look"), fw));
+    function paintFlags() {
+      const fl = L.flags.filter(f => f.sev >= lcState.fsev && (!lcState.ftype || f.type === lcState.ftype));
+      fw.replaceChildren(el("div", { class: "controls" },
+        select("lft", "Kind of flag", [["", "All kinds"], ...Object.entries(L.flag_types).map(([k, t]) => [k, t.title])], lcState.ftype, v => { lcState.ftype = v; lcState.flimit = 15; paintFlags(); }),
+        select("lfs", "Minimum severity", [["3", "High only"], ["2", "Medium and above"], ["1", "Everything"]], String(lcState.fsev), v => { lcState.fsev = +v; lcState.flimit = 15; paintFlags(); })),
+        el("p", { class: "sub" }, lcState.ftype ? L.flag_types[lcState.ftype].text : "Sorted by severity, then size. Click a row to open that council's profile."),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Year", "Kind", "What the data show"].map(h => el("th", {}, h)))),
+          el("tbody", {}, fl.slice(0, lcState.flimit).map(f => el("tr", { class: "click", onclick: () => { lcState.code = f.code; const s = document.getElementById("lcsel"); if (s) s.value = f.code; paintProfile(); jumpTo("lc-profile"); } },
+            el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, L.flag_types[f.type].title), el("td", {}, f.detail)))))),
+        fl.length > lcState.flimit ? el("p", {}, el("button", { onclick: () => { lcState.flimit += 25; paintFlags(); } }, `Show more (${fl.length - lcState.flimit} left)`)) : el("p", { class: "small" }, `${fl.length} shown. Click a row to open that council's profile.`));
+    }
+    paintFlags();
+    out.push(el("p", { class: "small" }, "Source: MHCLG, Local authority revenue expenditure and financing, England: revenue outturn; ONS mid-year population estimates. Tests are explained on the Method & sources page."));
+    paintProfile();
+    return out;
+  }
+
+  /* ---------- Compare */
   VIEWS.compare = () => {
     const root = el("div", {}, el("h2", {}, "Compare any two years"),
       el("p", { class: "lede" }, "Pick a breakdown and two years to see exactly what grew, what shrank, and by how much. Use real terms to strip out inflation."));
@@ -921,6 +1031,7 @@
     tiles.append(tileBtn(D.ons.flag_types.ons_monthly_jump.title, D.ons.flags.length, "in ONS monthly series · jump to section ↓", () => jumpTo("ons-flags")));
     tiles.append(tileBtn("Benefit fraud and error flags (DWP)", D.dwp.flags.length, "high rates, old measurements · jump to section ↓", () => jumpTo("dwp-flags")));
     if (D.proc) tiles.append(tileBtn("Government contract flags (Contracts Finder)", Object.values(D.proc.flag_counts).reduce((a, b) => a + b, 0), "direct awards, late notices · jump to section ↓", () => jumpTo("proc-summary")));
+    tiles.append(tileBtn("Local council flags (England)", "see below", "spending, reserves, schools deficits · jump to section ↓", () => jumpTo("lc-flags-summary")));
     tiles.append(tileBtn("Unusual borrowing months", D.bor.flags.length, "year-on-year changes · jump to section ↓", () => jumpTo("bor-flags")));
     root.append(tiles);
     const listWrap = el("div", { id: "flag-list" });
@@ -938,7 +1049,7 @@
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
     fl.id = "fn-flags";
     root.append(fl);
-    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), ...(D.proc ? [procFlagsCard()] : []), borFlagsCard(), benfordCard(), opacityCard());
+    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), ...(D.proc ? [procFlagsCard()] : []), borFlagsCard(), lcFlagsCard(), benfordCard(), opacityCard());
     return root;
 
     function rebuild() {
@@ -1008,6 +1119,19 @@
       el("p", {}, el("a", { href: "#/procurement" }, "Contracts page →")),
       el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Test", "Buyer", "Value", "What the notice shows"].map((h, i) => el("th", { class: i === 3 ? "n" : "" }, h)))),
         el("tbody", {}, top.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, P.types[f.type].title), el("td", {}, f.buyer), el("td", { class: "n" }, f.value_fmt), el("td", {}, f.detail)))))));
+  }
+
+  function lcFlagsCard() {
+    const box = el("section", { class: "card", id: "lc-flags-summary" }, el("h3", {}, "Local councils: unusual spending and finances"), el("p", { class: "sub" }, "Loading…"));
+    (D.lc ? Promise.resolve(D.lc) : loadJSON("councils").then(d => (D.lc = d))).then(L => {
+      const hi = L.flags.filter(f => f.sev === 3).slice(0, 10);
+      box.replaceChildren(el("h3", {}, "Local councils: unusual spending and finances"),
+        el("p", { class: "sub" }, `${L.flags.length} flags across English councils (${L.flags.filter(f => f.sev === 3).length} high). Councils are compared with councils that do the same job, after allowing for population. The ten largest high-severity ones are below; the Local councils page has all of them, with filters and council profiles.`),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Year", "Kind", "What the data show"].map(h => el("th", {}, h)))),
+          el("tbody", {}, hi.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, L.flag_types[f.type].title), el("td", {}, f.detail)))))),
+        el("p", {}, el("a", { href: "#/councils" }, "See all council flags →")));
+    }, () => box.replaceChildren(el("p", { class: "sub" }, "Council data could not be loaded.")));
+    return box;
   }
 
   function borFlagsCard() {
@@ -1133,6 +1257,13 @@
         }[k] || ""), "see description")),
         trow("Pile-up below round values", "For each round-number value, awards in the 5% band just below are compared with the 5% band just above (equal widths on a log scale); a binomial z-score of 3 or more with at least 30 awards below is flagged.", "z ≥ 3; ≥ 30 awards"),
         trow(D.bor.flag_types.borrowing_jump.title, "Year-on-year change in each month's net borrowing (in £, because borrowing crosses zero) scored against its own history since 1997; a shock is reported once, with the rebound a year later treated as a base effect.", "score ≥ 4; change ≥ £3bn"),
+        ...["lc_outlier|After allowing for residents (or children, or people aged 65+), a service costs far more or less than the median council of the same kind (districts, counties, or unitary/metropolitan/London). Robust score against the peer group.|score ≥ 3.5; spending ≥ £10m (£3m districts); severity rises at 4.5 and 6",
+          "lc_jump|Year-on-year change in a council's total service spending compared with the change at councils of its kind over the last four years.|score ≥ 4 and ≥ 15 points from typical",
+          "lc_reserves|Unallocated plus earmarked reserves (excluding schools and public health) below 10% of net revenue spending.|< 10% (severity rises below 5% and at zero)",
+          "lc_dsg|A negative Dedicated Schools Grant reserve of at least £5m and 3% of net revenue spending.|≥ 3% (severity rises at 15% and 30%)",
+          "lc_interest|Net interest paid at least 10% of net revenue spending.|≥ 10% (rises at 15% and 25%)",
+          "lc_invest|Commercial investment properties whose carrying cost exceeds their income by £1m or more.|≥ £1m",
+          "lc_missing|No revenue outturn return for a recent year when at least 90% of councils submitted.|2021-22 onward"].map(x => { const [k, h, t] = x.split("|"); return trow((D.lc ? D.lc.flag_types[k].title : ({ lc_outlier: "Council spend far from similar councils", lc_jump: "Council: sudden change in spending", lc_reserves: "Council: thin reserves", lc_dsg: "Council: schools funding deficit", lc_interest: "Council: heavy debt-servicing cost", lc_invest: "Council: investment properties costing more than they earn", lc_missing: "Council: accounts not submitted" })[k]), h, t); }),
         trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
         trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));

@@ -8,6 +8,7 @@ A static website for exploring where UK public money goes, year by year, with au
 - HMRC: [tax receipts and NICs](https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk) (monthly from April 2017) and [Measuring tax gaps](https://www.gov.uk/government/collections/measuring-tax-gaps)
 - DWP: [Fraud and error in the benefit system](https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system) (annual estimates for Great Britain; the FYE 2024, 2025 and 2026 releases)
 - Cabinet Office: [Contracts Finder](https://www.contractsfinder.service.gov.uk/) award notices, via its OCDS API (`pipeline/fetch_contracts.py`, polite and resumable; keeps organisation-level fields only and discards named contact people)
+- MHCLG: [Local authority revenue expenditure and financing, England: revenue outturn](https://www.gov.uk/government/collections/local-authority-revenue-expenditure-and-financing) (time series CSV, every council, 2017-18 onward) with ONS [mid-year population estimates](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates) by local authority and single year of age
 - Debt Management Office: [gilt holdings by type of holder](https://www.dmo.gov.uk/data/gilt-market/) (quarterly since 1987) and [average gilt issuance yields](https://www.dmo.gov.uk/data/gilt-market/average-gilt-issuance-yields/) (since 1998-99); file links are discovered from the DMO pages because the addresses change on each update
 - Bank of England: [daily gilt yields](https://www.bankofengland.co.uk/boeapps/database/) (5, 10 and 20 year nominal par yields, 5 year inflation-linked)
 - ONS: [Public sector finances](https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances) (monthly spending, receipts, borrowing and debt since April 1997)
@@ -31,6 +32,7 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 | Benefit fraud and error: overpaid and underpaid by benefit, by type and by reason, how recently each was measured, recoveries, restatements | DWP fraud and error data tables (3 releases) |
 | Government contracts: awards by month, procedure, sector, buyer and supplier; red flags (direct awards, late notices, estimate gaps, repeat awards, concentration, pile-ups below round values) | Contracts Finder award notices (last 60 days by default, extendable) |
 | Borrowing and debt: borrowing since 1946, net debt, who holds gilts, gilt yields, the price paid on new gilts, interest as a share of receipts | ONS annual and monthly series, DMO, Bank of England |
+| Local councils (England): spending by service, per resident / child / person aged 65+, peer comparison, reserves, schools deficits, interest, league tables, council profiles | MHCLG revenue outturn, ONS population |
 | Agreement between ONS and Treasury totals | ONS monthly TME summed per financial year vs PESA Table 4.1 |
 
 **Monthly data:** the Treasury's tables are annual, so monthly figures come from the ONS (public finances) and HMRC (tax receipts). ONS figures are not seasonally adjusted, and the latest months are provisional. ONS publishes borrowing as a negative number; the site shows it as positive.
@@ -57,6 +59,7 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 16. Contracts: large awards without competition, notices published long after the award, awards far from the advertised value, very long contracts, repeat awards to one supplier, buyers dominated by one supplier, buyers that rarely state their procedure, and pile-ups of awards just below round values
 17. Unusual months in government borrowing (year-on-year, in £ because borrowing crosses zero), and checks that gilt holders add up to the total and that borrowing equals spending minus receipts
 18. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
+19. Local councils: spending far from similar councils, sudden changes, thin reserves, schools (DSG) deficits, heavy interest, loss-making investment property, missing returns; checks that council returns add up to the published class totals and the 13 service lines to total service spending (`pipeline/councils.py`)
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
 
