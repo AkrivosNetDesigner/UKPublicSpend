@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -87,6 +87,7 @@
     const y19 = rows.find(r => r.year === "2019-20");
     const realCh = (last.tme_real / prev.tme_real - 1) * 100, real19 = (last.tme_real / y19.tme_real - 1) * 100;
     const high = D.flags.flags.filter(f => f.sev === 3).length;
+    const hm = hmrcHeadline();
     const root = el("div", {},
       el("h2", {}, "Where UK public money goes"),
       el("p", { class: "lede" }, `Total Managed Expenditure (TME) is the Treasury's headline measure of all public spending. Latest outturn: ${last.year}. Figures are annual; real terms means adjusted to ${last.year} prices using the GDP deflator in Table 4.1.`),
@@ -94,10 +95,11 @@
         kpi("Total public spending", bn(last.tme), `${last.year} · ${pc(last.tme_gdp)} of GDP`),
         kpi("Change in real terms", dpc(realCh), `vs ${prev.year} (price-adjusted)`),
         kpi("Since pre-pandemic", dpc(real19), `real-terms change vs 2019-20`),
-        kpi("Net investment", bn(last.netinv), `of the total, ${pc(last.netinv / last.tme * 100)} of TME`),
-        kpi("High-priority flags", String(high), "unusual figures to look at first"),
+        kpi("Tax received (HMRC)", mm(hm.recLast), `${hm.fy} · ${dpc(hm.recYoy)} on the year before`),
+        kpi("Tax not collected", bn(hm.gap), `${hm.gapYear} estimate · ${pc(hm.gapPct)} of tax due`),
+        kpi("High-priority flags", String(high + hm.high), "unusual figures to look at first"),
       ),
-      el("div", { class: "notice info" }, el("b", {}, "About monthly figures: "), "the two GOV.UK collections this site is limited to publish annual outturn, not monthly spending. (Month-by-month public finance data is published by the ONS and HMRC, which are outside the permitted sources, so it is deliberately not included.)"),
+      el("div", { class: "notice info" }, el("b", {}, "Monthly figures: "), "HMRC tax receipts, and the benefits HMRC pays, are published monthly (see ", el("a", { href: "#/tax" }, "Tax & tax gap"), "). Government spending itself is only published annually by the Treasury; monthly spending comes from the ONS Public Sector Finances, which this version does not include yet."),
     );
     const g = el("div", { class: "grid g2" });
     const c1 = chartBox(), c2 = chartBox(), c3 = chartBox(), c4 = chartBox();
@@ -309,6 +311,140 @@
     }
   };
 
+  /* ---------- Tax & tax gap (HMRC) */
+  function hmrcHeadline() {
+    const H = D.hmrc, i = H.fys.length - 1, tot = H.receipts_a["Total HMRC Receipts"];
+    const gap = H.taxgap.gap_bn.find(r => r.labels[0] === "Total tax gap"), pct = H.taxgap.gap_pct.find(r => r.labels[0] === "Total tax gap");
+    return { fy: H.fys[i], recLast: tot[i], recYoy: (tot[i] / tot[i - 1] - 1) * 100, gap: gap.values.at(-1), gapPct: pct.values.at(-1),
+      gapYear: H.taxgap.years.at(-1), high: H.flags.filter(f => f.sev === 3).length };
+  }
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monLabel = k => `${MON[+k.slice(5) - 1]} ${k.slice(0, 4)}`;
+  const cleanTax = n => n.replace(/\s*\(included within[^)]*\)/, " (part of a larger tax)").replace("Total HMRC Receipts", "All taxes (total HMRC receipts)");
+  const BEHAVIOUR_HELP = {
+    "Avoidance": "Using the tax rules in ways Parliament did not intend.",
+    "Criminal attacks": "Organised crime attacking the tax system, such as VAT fraud and smuggling.",
+    "Error": "Honest mistakes by taxpayers.",
+    "Evasion": "Deliberately hiding income or falsifying records.",
+    "Failure to take reasonable care": "Careless mistakes where reasonable steps were not taken.",
+    "Hidden economy": "Activity that is entirely outside the tax system.",
+    "Legal interpretation": "Disagreements over what the law means, which courts may decide.",
+    "Non-payment": "Tax that is owed but not paid, for example because of insolvency.",
+  };
+  const taxState = { tax: "Total HMRC Receipts", basis: "nominal", gapBy: "tax" };
+  VIEWS.tax = () => {
+    const H = D.hmrc, hm = hmrcHeadline(), bias = H.revision_bias;
+    const months = H.months, tot = H.receipts_m["Total HMRC Receipts"], li = months.length - 1;
+    const yoy = (tot[li] / tot[li - 12] - 1) * 100;
+    // year-to-date: April of the latest financial year to the latest month
+    const fyStart = months.findLastIndex(m => m.endsWith("-04") && li - months.indexOf(m) < 12);
+    const n = li - fyStart + 1, ytd = tot.slice(fyStart, li + 1).reduce((a, v) => a + (v || 0), 0), ytdPrev = tot.slice(fyStart - 12, li + 1 - 12).reduce((a, v) => a + (v || 0), 0);
+    const root = el("div", {}, el("h2", {}, "Tax received, and tax not collected"),
+      el("p", { class: "lede" }, "HMRC collects almost all the money government spends. Its statistics show monthly receipts, and its estimate of the “tax gap”: the tax that should have been paid but was not, through evasion, criminal attacks, error, avoidance and non-payment. Cash receipts here are not the same measure as the Treasury's spending tables, so compare trends, not pennies."),
+      el("div", { class: "kpis" },
+        kpi(`Tax received, ${monLabel(months[li])}`, mm(tot[li]), `${dpc(yoy)} on ${monLabel(months[li - 12])}`),
+        kpi(`Since April ${months[fyStart].slice(0, 4)}`, mm(ytd), `${n} months · ${dpc((ytd / ytdPrev - 1) * 100)} on the same months last year`),
+        kpi(`Tax received, ${hm.fy}`, mm(hm.recLast), `${dpc(hm.recYoy)} on ${H.fys.at(-2)}`),
+        kpi(`Tax gap, ${hm.gapYear}`, bn(hm.gap), `${pc(hm.gapPct)} of tax due`),
+        kpi("Revisions to first estimates", `${bias.n_up} of ${bias.n} up`, `latest ${bias.n} editions, average ${dpc(bias.mean_pp).replace("%", "pp")}`)));
+    const body = el("div", {});
+    root.append(body);
+    build();
+    return root;
+
+    function build() {
+      body.replaceChildren();
+      // A. where tax comes from
+      const fys = H.fys, A_ = H.receipts_a, real = taxState.basis === "real";
+      const adj = (v, i) => v == null ? 0 : v * (real ? rf(fys[i]) : 1);
+      const parts = [["Income Tax", "Income Tax"], ["National Insurance", "National Insurance Contributions"], ["VAT", "Value Added Tax"], ["Corporation Tax", "Corporation Tax"], ["Fuel duties", "Hydrocarbon Oil (Fuel duties)"]];
+      const stack = parts.map(([nm, col]) => ({ name: nm, values: A_[col].map(adj) }));
+      stack.push({ name: "Other", values: fys.map((_, i) => adj(A_["Total HMRC Receipts"][i], i) - stack.reduce((a, s) => a + s.values[i], 0)) });
+      const c1 = chartBox();
+      body.append(card("Where the money comes from", "Tax receipts by financial year, £ million. “Other” includes Capital Gains Tax, stamp duties, alcohol and tobacco duties, and every other HMRC tax.",
+        el("div", { class: "controls" }, select("tb", "Basis", [["nominal", "Cash (nominal)"], ["real", "Real terms (2025-26 prices)"]], taxState.basis, v => { taxState.basis = v; build(); })), c1));
+      draw(() => stackedBars(c1, { x: fys, series: stack, fmt: mm, axisFmt: mm, title: "Tax receipts by type" }));
+
+      // B. month by month
+      const taxes = Object.keys(H.receipts_m).filter(k => H.receipts_m[k].some(v => v != null && v !== 0));
+      const col = H.receipts_m[taxState.tax] || tot;
+      const c2 = chartBox(), c3 = chartBox();
+      const taxFlags = H.flags.filter(f => f.type === "monthly_jump" && f.tax === taxState.tax);
+      body.append(card("Month by month", `Cash received by HMRC each month since April 2017. Taxes arrive in lumps (Self Assessment in January and July, Corporation Tax quarterly), so compare each month with the same month in other years.`,
+        el("div", { class: "controls" }, select("tx", "Tax", taxes.map(k => [k, cleanTax(k)]), taxState.tax, v => { taxState.tax = v; build(); })), c2));
+      draw(() => lineChart(c2, { x: months.map(monLabel), fmt: mm, axisFmt: mm, zero: true, title: cleanTax(taxState.tax), series: [{ name: cleanTax(taxState.tax), values: col }],
+        bands: taxFlags.map(f => ({ x: monLabel(f.month) })) }));
+      if (taxFlags.length) body.append(el("div", { class: "notice info" }, el("b", {}, `${taxFlags.length} unusual month${taxFlags.length > 1 ? "s" : ""} (shaded): `), taxFlags.slice(0, 3).map(f => f.detail).join(" "), taxFlags.length > 3 ? ` (+${taxFlags.length - 3} more on the Unusual figures page.)` : ""));
+      // seasonality
+      const fyList = [...new Set(months.map(m => { const y = +m.slice(0, 4), mo = +m.slice(5); return mo >= 4 ? y : y - 1; }))].slice(-5).reverse();
+      const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+      const ser = fyList.map(fy => ({ name: `${fy}-${String(fy + 1).slice(2)}`, values: order.map(mo => { const y = mo >= 4 ? fy : fy + 1, i = months.indexOf(`${y}-${String(mo).padStart(2, "0")}`); return i < 0 ? null : col[i]; }) }));
+      body.append(card("The same months across years", "Each line is one financial year, April to March. A line that departs from the others shows where timing or policy changed receipts.", c3));
+      draw(() => lineChart(c3, { x: order.map(m => MON[m - 1]), fmt: mm, axisFmt: mm, zero: true, title: "Seasonal comparison", series: ser, height: 260 }));
+      // table: latest month vs year ago
+      const rows = ["Total HMRC Receipts", "Income Tax", "National Insurance Contributions", "Value Added Tax", "Corporation Tax", "Hydrocarbon Oil (Fuel duties)", "Capital Gains Tax", "Stamp Duty Land Tax", "Inheritance Tax", "Tobacco Duties", "Betting & Gaming", "Penalties"].filter(k => H.receipts_m[k]).map(k => {
+        const v = H.receipts_m[k], a = v[li], b = v[li - 12], ytdA = v.slice(fyStart, li + 1).reduce((x, y) => x + (y || 0), 0), ytdB = v.slice(fyStart - 12, li + 1 - 12).reduce((x, y) => x + (y || 0), 0);
+        return el("tr", { class: "click", onclick: () => { taxState.tax = k; build(); }, title: "Show this tax above" }, el("td", {}, cleanTax(k)), el("td", { class: "n" }, mm(a)), el("td", { class: "n" }, b ? dpc((a / b - 1) * 100) : "–"), el("td", { class: "n" }, mm(ytdA)), el("td", { class: "n" }, ytdB ? dpc((ytdA / ytdB - 1) * 100) : "–"));
+      });
+      body.append(card(`Latest month: ${monLabel(months[li])}`, "Click a row to chart it above. Latest months are provisional.", el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Tax", monLabel(months[li]), "vs a year ago", "Year to date", "vs same period last year"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))), el("tbody", {}, rows)))));
+      // C. benefits paid by HMRC
+      const c4 = chartBox(), sp = H.spend_m;
+      body.append(card("Benefits that HMRC pays", "Monthly payments of tax credits (being wound down), Child Benefit and Tax-Free Childcare, £ million.", c4));
+      draw(() => lineChart(c4, { x: months.map(monLabel), fmt: mm, axisFmt: mm, zero: true, height: 240, title: "HMRC-administered payments",
+        series: Object.keys(sp).filter(k => sp[k].some(v => v != null)).map(k => ({ name: k, values: sp[k] })) }));
+
+      // D. tax gap
+      body.append(taxGapSection());
+    }
+  };
+
+  function taxGapSection() {
+    const G = D.hmrc.taxgap, wrap = el("div", {});
+    const yrs = G.years;
+    const total = G.gap_bn.find(r => r.labels[0] === "Total tax gap").values, pctRow = G.gap_pct.find(r => r.labels[0] === "Total tax gap").values;
+    const liab = G.gap_bn.find(r => r.labels[0].startsWith("Total theoretical")).values;
+    const cTop = chartBox(), cBy = chartBox();
+    wrap.append(card("The tax gap: tax that should have been paid but wasn't", `HMRC's estimate of the difference between the tax due and the tax collected, as a share of total tax liabilities. It is an estimate built from sampling, models and assumptions, and recent years are revised later (see below). Latest: ${bn(total.at(-1))} in ${yrs.at(-1)}, ${pc(pctRow.at(-1))} of ${bn(liab.at(-1))} due.`, cTop));
+    draw(() => lineChart(cTop, { x: yrs, fmt: v => nf1.format(v), axisFmt: v => "£" + nf0.format(v) + "bn", zero: true, height: 240, title: "Tax gap £bn and %",
+      series: [{ name: "Tax gap, £bn", values: total }] }));
+    const c2 = chartBox();
+    wrap.append(card("Tax gap as a share of tax due", "The same estimate as a percentage, which removes the effect of tax rises and inflation.", c2));
+    draw(() => lineChart(c2, { x: yrs, fmt: pc, axisFmt: v => v + "%", zero: true, height: 220, title: "Tax gap percent", series: [{ name: "% of liabilities", values: pctRow }] }));
+
+    const sel = select("gb", "Break the gap down by", [["tax", "Which tax"], ["behaviour", "Behaviour (evasion, error…)"], ["group", "Who (customer group)"]], taxState.gapBy, v => { taxState.gapBy = v; fill(); });
+    const holder = el("div", {});
+    wrap.append(card("What the gap is made of", "£ billion.", el("div", { class: "controls" }, sel), cBy, holder));
+    function fill() {
+      holder.replaceChildren();
+      let years = yrs, rows;
+      if (taxState.gapBy === "tax") {
+        const names = { "Total VAT": "VAT", "Total excise duty": "Excise duties", "Total Income Tax, NICs, Capital Gains Tax": "Income Tax, NICs & CGT", "Total Corporation Tax": "Corporation Tax", "Total other taxes": "Other taxes" };
+        rows = G.gap_bn.filter(r => names[r.labels[2]] && r.labels[0] !== "Total tax gap").map(r => ({ name: names[r.labels[2]], values: r.values.map(v => v ?? 0) }));
+      } else if (taxState.gapBy === "behaviour") {
+        years = G.behaviour.years;
+        rows = G.behaviour.rows.filter(r => r.labels[1] === "Tax gap in £bn" && r.labels[0] !== "Total").map(r => ({ name: r.labels[0], values: r.values.map(v => v ?? 0) }));
+        holder.append(el("ul", { class: "tight small" }, rows.map(r => el("li", {}, el("b", {}, r.name + ": "), BEHAVIOUR_HELP[r.name] || ""))),
+          el("p", { class: "small" }, "Plain-English summaries; HMRC's methodology annex has the precise definitions. “Illustrative” split: HMRC cautions that behaviours are estimated less precisely than the total."));
+      } else {
+        years = G.groups.years;
+        rows = G.groups.rows.filter(r => r.labels[1] === "Tax gap in £bn" && r.labels[0] !== "Total").map(r => ({ name: r.labels[0], values: r.values.map(v => v ?? 0) }));
+      }
+      const colored = rows.map((r, i) => ({ ...r }));
+      draw(() => stackedBars(cBy, { x: years, series: colored, fmt: v => "£" + nf1.format(v) + "bn", axisFmt: v => "£" + nf0.format(v) + "bn", title: "Tax gap breakdown", height: 300 }));
+    }
+    fill();
+    // revisions
+    const bias = D.hmrc.revision_bias, rs = D.hmrc.revision_summary;
+    const c3 = chartBox();
+    const recent = rs.slice(-12);
+    wrap.append(card("How HMRC's tax gap estimates change after first publication", `Each bar is the change in a year's estimated tax gap (percentage points of liabilities) between the edition that first estimated it and the latest edition. In the last ${bias.n} years that could be re-estimated, the first estimate was later revised up ${bias.n_up} times (average ${dpc(bias.mean_pp).replace("%", "pp")}). A recent-year gap quoted in the press is therefore likely to be revised, and has tended to be revised upwards.`, c3,
+      el("div", { class: "tablewrap", style: "margin-top:10px" }, el("table", {}, el("thead", {}, el("tr", {}, ["Year", "First estimate", "Latest", "Change", "Editions"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
+        el("tbody", {}, recent.slice().reverse().map(r => el("tr", {}, el("td", {}, r.year), el("td", { class: "n" }, `${pc(r.first)} (${r.first_pub})`), el("td", { class: "n" }, pc(r.latest)), el("td", { class: "n" }, (r.revision_pp >= 0 ? "+" : "−") + nf1.format(Math.abs(r.revision_pp)) + "pp"), el("td", { class: "n" }, r.n_pubs))))))));
+    draw(() => barChart(c3, { items: recent.map(r => ({ label: r.year, value: r.revision_pp })), diverging: true, fmt: v => (v >= 0 ? "+" : "−") + nf1.format(Math.abs(v)) + "pp", axisFmt: v => nf1.format(v) + "pp",
+      tipFmt: it => { const r = recent.find(x => x.year === it.label); return `${pc(r.first)} (${r.first_pub}) → ${pc(r.latest)} (${r.latest_pub})`; } }));
+    return wrap;
+  }
+
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   VIEWS.compare = () => {
@@ -373,6 +509,9 @@
       return el("button", { class: "kpi", style: "text-align:left;cursor:pointer", "aria-pressed": String(fState.type === k), onclick: () => { fState.type = fState.type === k ? "" : k; fState.limit = 40; rebuild(); } },
         el("div", { class: "l" }, t.title), el("div", { class: "v" }, k === "function_jump" ? String(F.function_flags.length) : String(n)), el("div", { class: "d" }, k === "function_jump" ? "in the function tables" : "in departmental lines"));
     }));
+    const hf = D.hmrc.flags, hTiles = [["monthly_jump", "Unusual change in monthly tax receipts"], ["taxgap_revision", "Tax gap estimate later revised"]];
+    hTiles.forEach(([k, t]) => tiles.append(el("button", { class: "kpi", style: "text-align:left;cursor:pointer", onclick: () => document.getElementById("hmrc-flags").scrollIntoView({ behavior: "smooth" }) },
+      el("div", { class: "l" }, t), el("div", { class: "v" }, String(hf.filter(f => f.type === k).length)), el("div", { class: "d" }, "in HMRC statistics"))));
     root.append(tiles);
     const listWrap = el("div", {});
     root.append(listWrap);
@@ -388,7 +527,7 @@
       el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Year", "What happened"].map(h => el("th", {}, h)))),
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
     root.append(fl);
-    root.append(benfordCard(), opacityCard());
+    root.append(hmrcFlagsCard(), benfordCard(), opacityCard());
     return root;
 
     function rebuild() {
@@ -423,6 +562,26 @@
     }
   };
 
+  const hState = { sev: 2, limit: 15 };
+  function hmrcFlagsCard() {
+    const H = D.hmrc, out = el("section", { class: "card", id: "hmrc-flags" });
+    function paint() {
+      const mj = H.flags.filter(f => f.type === "monthly_jump" && f.sev >= hState.sev), tg = H.flags.filter(f => f.type === "taxgap_revision");
+      out.replaceChildren(el("h3", {}, "HMRC: unusual months and revised tax gap estimates"),
+        el("p", { class: "sub" }, "Each tax's monthly receipts are compared with the same month a year earlier and scored against that tax's own history. A shock is reported once: the following year's rebound is treated as a base effect. Tax rises, tax cuts, payment-date timing and the pandemic are common innocent causes."),
+        el("div", { class: "controls" }, select("hs", "Minimum severity", [["3", "High only"], ["2", "Medium and above"], ["1", "Everything"]], String(hState.sev), v => { hState.sev = +v; hState.limit = 15; paint(); })),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Month", "Tax", "Amount", "What happened"].map((h, i) => el("th", { class: i === 3 ? "n" : "" }, h)))),
+          el("tbody", {}, mj.slice(0, hState.limit).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, monLabel(f.month)), el("td", {}, cleanTax(f.tax)), el("td", { class: "n" }, mm(f.value)), el("td", {}, f.detail)))))),
+        mj.length > hState.limit ? el("p", {}, el("button", { onclick: () => { hState.limit += 25; paint(); } }, `Show more (${mj.length - hState.limit} left)`)) : null,
+        el("h3", { style: "margin-top:16px" }, "Tax gap years whose estimate moved by 1 percentage point or more"),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Year", "What happened"].map(h => el("th", {}, h)))),
+          el("tbody", {}, tg.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))),
+        el("p", { class: "small" }, "Older years' estimates mostly moved down as HMRC changed its methods; recent years' first estimates have mostly moved up."));
+    }
+    paint();
+    return out;
+  }
+
   function benfordCard() {
     const B = D.flags.benford;
     const sel = el("select", { id: "bsel", onchange: e => paint(e.target.value) }, B.depts.map(d => el("option", { value: d.dept }, d.dept)));
@@ -453,9 +612,11 @@
   VIEWS.checks = () => {
     const C = D.checks.checks;
     const root = el("div", {}, el("h2", {}, "Do the official tables add up?"),
-      el("p", { class: "lede" }, "The Treasury publishes the same totals in several tables. These checks recompute sums and compare tables against each other. A gap is not proof of error (rounding, timing and revisions all matter) but it is exactly what a careful reader would want pointed out."));
+      el("p", { class: "lede" }, "The Treasury and HMRC publish the same totals in several tables. These checks recompute sums and compare tables against each other. A gap is not proof of error (rounding, timing and revisions all matter) but it is exactly what a careful reader would want pointed out."));
     root.append(el("div", { class: "kpis" }, kpi("Pass", String(C.filter(c => c.status === "pass").length), "agree within rounding"), kpi("Discrepancy", String(C.filter(c => c.status === "warn").length), "outside rounding tolerance"), kpi("Documented gap", String(C.filter(c => c.status === "info").length), "explained in the source notes")));
+    let lastSource = null;
     C.forEach(c => {
+      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, lastSource === "HMRC" ? "HMRC tables" : "HM Treasury tables")); }
       const unit = /£bn/.test(c.title) ? "£bn" : /£m/.test(c.title) ? "£m" : "";
       const tol = c.tolerance > 1e9 ? 0 : c.tolerance;
       const head = el("tr", {}, ["Year", "Expected", "Table shows", "Gap"].map((h, i) => el("th", { class: i ? "n" : "" }, h)));
@@ -475,15 +636,16 @@
 
   /* ---------- Method */
   VIEWS.method = () => {
-    const P = D.flags.params, T = D.flags.types;
+    const P = D.flags.params, T = D.flags.types, T_ = D.hmrc.flag_types;
     const root = el("div", {}, el("h2", {}, "Method & sources"));
-    root.append(card("Sources (and only these)", "Every number comes from a file published by HM Treasury on GOV.UK in one of two collections.",
+    root.append(card("Sources (and only these)", "Every number comes from a file published on GOV.UK by HM Treasury (Public Spending Statistics and PESA) or by HMRC (tax receipts and tax gap statistics). The ONS Public Sector Finances are not included yet.",
       el("ul", { class: "tight" }, D.meta.collections.map(u => el("li", {}, el("a", { href: u, rel: "noopener" }, u)))),
       el("p", { class: "small" }, "Files used (all downloaded and processed by pipeline/build.py in the project, so anyone can reproduce the data):"),
-      el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, "download .xlsx")))))))));
+      el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, "download")))))))));
     root.append(card("What the site can and cannot tell you", null, el("ul", { class: "tight" },
-      el("li", {}, el("b", {}, "Annual only. "), "These collections publish financial-year outturn. There is no monthly spending series in them."),
-      el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud, nor measure fraud and error rates (those are published elsewhere)."),
+      el("li", {}, el("b", {}, "Spending is annual. "), "The Treasury publishes financial-year outturn. Monthly figures here are HMRC's: tax receipts, and the benefits HMRC pays. Monthly government spending (ONS) is not included yet."),
+      el("li", {}, el("b", {}, "Tax gap is an estimate. "), "HMRC builds it from sampling, models and assumptions; it is not a count of detected fraud, and recent years are routinely revised."),
+      el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud. The nearest thing to a fraud measure is HMRC's tax gap by behaviour (evasion, criminal attacks, error…). Benefit fraud and error rates (DWP) are not included."),
       el("li", {}, el("b", {}, "Coverage. "), "The line-by-line database covers departmental budgets only (DEL and departmental AME) and, by the Treasury's own note, excludes the Security and Intelligence Agencies and military operations costs. Long-run totals and function splits (Chapter 4) cover everything."),
       el("li", {}, el("b", {}, "Latest numbers can change. "), "Recent years are provisional and get restated; the revision tests show how much they have moved in the past."),
       el("li", {}, el("b", {}, "Real terms "), "uses the ratio of real to nominal Total Managed Expenditure in Table 4.1, i.e. the Treasury's own GDP-deflator adjustment."))));
@@ -499,7 +661,9 @@
         trow(T.function_jump.title, "Same robust method applied to year-on-year real-terms change in each function and sub-function, relative to its own history 2003-04 → 2025-26.", `score ≥ ${P.function_z}; change ≥ £${P.function_min_change_bn}bn`),
         trow("Benford first-digit test", "Compares the distribution of leading digits of all amounts in a department with Benford's law, using Nigrini's mean absolute deviation scale.", `needs ≥ ${P.benford_min_n} amounts; ≥ 1,000 for reliable`),
         trow("Catch-all spending share", "Share of positive spending in “other”, “unallocated” and “provision” categories, which carry little information about what was bought.", `flag if ≥ ${P.opaque_share_flag * 100}% and rising ≥ ${P.opaque_rise_pp}pp`),
-        trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK) and compares the same total across tables and real-vs-cash deflators.", "1-decimal rounding tolerance"),
+        trow(T_.monthly_jump.title, "Same method as the spending-line jump test, applied to each tax's receipts compared with the same month a year earlier (median/MAD score against that tax's own history). A shock is reported once; a rebound twelve months later is treated as a base effect.", "score ≥ 4; change ≥ £300m a month"),
+        trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
+        trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));
     root.append(card("Priority score", null, el("p", { class: "small" }, "Per spending line: Low = 1 point, Medium = 3, High = 6, summed over all its flags, plus 2 for each additional kind of flag. Lines are ranked by score, then size. It is deliberately simple so anyone can reproduce it.")));
     root.append(card("Reproduce it", null, el("p", { class: "small" }, "Run "), el("pre", { style: "overflow:auto" }, "python3 pipeline/build.py\npython3 -m unittest discover -s pipeline/tests")));
@@ -509,15 +673,15 @@
 
   /* --------------------------------------------------------------- boot */
   async function boot() {
-    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks"];
+    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc"];
     try {
       const res = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => { if (!r.ok) throw new Error(n); return r.json(); })));
-      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks] = res;
+      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc] = res;
     } catch (e) {
       main.replaceChildren(el("div", { class: "notice" }, "Could not load the data files. If you opened index.html directly from disk, serve the folder instead (for example: python3 -m http.server -d site)."));
       return;
     }
-    document.getElementById("foot-meta").textContent = `Data: ${D.meta.latest_release}, plus earlier PESA/PSS releases back to July 2024. Processed ${D.meta.generated}.`;
+    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks) and HMRC receipts and tax gap statistics. Processed ${D.meta.generated}.`;
     route();
   }
   boot();

@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import analysis as A  # noqa: E402
+import hmrc as H  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +26,7 @@ OUT = ROOT / "site" / "data"
 
 
 def fetch(key, meta):
-    dest = RAW / (key + ".xlsx")
+    dest = RAW / (key + os.path.splitext(meta["url"])[1])
     if dest.exists() and dest.stat().st_size > 1000:
         return dest
     RAW.mkdir(exist_ok=True)
@@ -134,6 +135,19 @@ def main():
     rev_out = {d: {y: {r: round_m(v) for r, v in rels.items()} for y, rels in ys.items()} for d, ys in rev.items()}
 
     checks = A.integrity_checks(t11, agg, f42, f43, region_for_checks, {"dbtotals": dbtotals})
+    for c in checks:
+        c["source"] = "HM Treasury"
+
+    # ---- HMRC: monthly/annual receipts and tax gap
+    rec = H.parse_receipts(paths["hmrc_receipts"])
+    gap = H.parse_tax_gap(paths["hmrc_taxgap"])
+    rev_sum = H.taxgap_revision_summary(gap["revisions"])
+    hflags = H.monthly_flags(rec["months"], rec["receipts_m"]) + H.taxgap_flags(rev_sum)
+    checks += H.hmrc_checks(rec, gap)
+    dump("hmrc.json", {"months": rec["months"], "receipts_m": rec["receipts_m"], "spend_m": rec["spend_m"],
+                       "fys": rec["fys"], "receipts_a": rec["receipts_a"], "spend_a": rec["spend_a"],
+                       "taxgap": gap, "revision_summary": rev_sum, "revision_bias": H.recent_bias(rev_sum),
+                       "flags": hflags, "flag_types": {k: {"title": v[0], "text": v[1]} for k, v in H.MONTHLY_FLAG_TEXT.items()}})
 
     counts = defaultdict(int)
     for f in flags:
@@ -149,13 +163,13 @@ def main():
     dump("tme.json", {"years": t11y, "lines": t11l})
     dump("meta.json", {
         "generated": datetime.date.today().isoformat(), "latest_release": "Public Spending Statistics, July 2026",
-        "collections": src["collections"], "release_page": src["release_page"],
+        "collections": src["collections"], "pending": src.get("pending", []), "release_page": src["release_page"],
         "files": [{"key": k, **m} for k, m in src["files"].items()],
         "db_years": years})
 
     print(f"segments: {len(segs)}  flags: {len(flags)}  by type: {dict(counts)}")
     print("checks:", {c['id']: c['status'] for c in checks})
-    print("function flags:", len(fn_flags))
+    print("function flags:", len(fn_flags), " hmrc flags:", len(hflags))
 
 
 if __name__ == "__main__":

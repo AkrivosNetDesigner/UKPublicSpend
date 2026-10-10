@@ -73,6 +73,12 @@
     return out;
   }
 
+  /* horizontal room one x label needs: at least `min`, more for long labels like "Apr 2017" */
+  function perLabel(x, min) {
+    const longest = x.reduce((a, l) => Math.max(a, String(l).length), 0);
+    return Math.max(min, longest * 6.6 + 22);
+  }
+
   function sizeOf(el, h) { return { W: Math.max(300, el.clientWidth || 640), H: h }; }
 
   /* ------------------------------------------------------------- line */
@@ -99,7 +105,7 @@
       const tx = svg("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s); tx.textContent = o.axisFmt ? o.axisFmt(t) : o.fmt(t);
     });
     if (o.zero === false || lo < 0) { /* zero line already drawn via ticks */ }
-    labelIdx(n, W - m.l - m.r, 62).forEach(i => {
+    labelIdx(n, W - m.l - m.r, perLabel(o.x, 62)).forEach(i => {
       const tx = svg("text", { x: X(i), y: H - 6, "text-anchor": i === 0 ? "start" : i === n - 1 ? "end" : "middle" }, s);
       tx.textContent = o.x[i];
     });
@@ -161,7 +167,7 @@
       svg("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), ...(t === 0 ? { class: "axis" } : {}) }, g);
       const tx = svg("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s); tx.textContent = o.axisFmt ? o.axisFmt(t) : o.fmt(t);
     });
-    labelIdx(n, W - m.l - m.r, 56).forEach(i => {
+    labelIdx(n, W - m.l - m.r, perLabel(o.x, 56)).forEach(i => {
       const tx = svg("text", { x: m.l + bw * i + bw / 2, y: H - 6, "text-anchor": i === n - 1 ? "end" : "middle" }, s);
       tx.textContent = o.x[i];
     });

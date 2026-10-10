@@ -2,10 +2,11 @@
 
 A static website for exploring where UK public money goes, year by year, with automatic checks that point at unusual figures.
 
-**All data comes only from HM Treasury files published in two GOV.UK collections:**
+**All data comes from official files published on GOV.UK:**
 
-- <https://www.gov.uk/government/collections/national-statistics-release> (Public Spending Statistics)
-- <https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa> (PESA)
+- HM Treasury: <https://www.gov.uk/government/collections/national-statistics-release> (Public Spending Statistics) and <https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa> (PESA)
+- HMRC: [tax receipts and NICs](https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk) (monthly from April 2017) and [Measuring tax gaps](https://www.gov.uk/government/collections/measuring-tax-gaps)
+- ONS (Public Sector Finances, monthly): **not yet included**; the build environment could not reach `ons.gov.uk`
 
 The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) and on the site's *Method & sources* page.
 
@@ -19,8 +20,10 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 | Countries and regions, total and per head | PSS Chapter 9 |
 | Revisions to past years | PSS databases 2024, 2025, 2026 compared |
 | Table cross-checks | Tables 1.1, 4.1–4.3, 9.1a |
+| Monthly and annual tax receipts by tax; benefits HMRC pays | HMRC receipts statistics table |
+| Tax gap (£bn and %) by tax, behaviour and customer group; revisions between editions | HMRC Measuring tax gaps tables |
 
-**Not included, deliberately:** monthly spending. The permitted collections publish annual outturn only; monthly series come from the ONS/HMRC, which are outside the permitted sources.
+**Monthly data:** HMRC receipts are monthly. Monthly government *spending* is published by the ONS (Public Sector Finances) and is not included yet; the Treasury's own tables are annual.
 
 ## Unusual-figure tests
 
@@ -36,7 +39,9 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 8. Unusual function-level moves
 9. Benford first-digit conformity (weak, flagged as indicative)
 10. Share of spend in catch-all categories ("other", "unallocated", "provisions")
-11. Cross-table integrity checks (do totals add up and agree between tables?)
+11. Cross-table integrity checks (do totals add up and agree between tables?), including HMRC's receipts and tax gap tables
+12. Unusual months in HMRC tax receipts (year-on-year, scored per tax; a shock is reported once, not again as next year's rebound)
+13. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
 
