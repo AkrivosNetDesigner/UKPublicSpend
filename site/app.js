@@ -861,10 +861,11 @@
     const pairs = O.pairings;
     const body = el("div", { id: "buys-body" });
     out.push(card("Choose a pairing", null, el("div", { class: "controls" },
-      select("bp", "Service and result", [...pairs.map((p, i) => [String(i), p.title + " · " + p.service + " (council by council)"]), ["schools", "Schools · Education (national, over time)"]], String(bState.p), v => { bState.p = v === "schools" ? v : +v; bState.g = 0; bState.hl = ""; paint(); }))));
+      select("bp", "Service and result", [...pairs.map((p, i) => [String(i), p.title + " · " + p.service + " (council by council)"]), ["schools", "Schools · Education (national, over time)"], ["nhs", "NHS waiting lists · Health (national, over time)"]], String(bState.p), v => { bState.p = isNaN(+v) ? v : +v; bState.g = 0; bState.hl = ""; paint(); }))));
     out.push(body);
     function paint() {
       if (bState.p === "schools") return paintSchools();
+      if (bState.p === "nhs") return paintNhs();
       const P = pairs[bState.p], G = P.groups[Math.min(bState.g, P.groups.length - 1)], S = G.stats;
       const fx = P.id === "waste" ? v => "£" + nf0.format(v) : v => "£" + nf1.format(v) + "k";
       const fy = G.unit === "%" ? v => nf1.format(v) + "%" : v => nf0.format(v) + " " + G.unit;
@@ -896,6 +897,34 @@
           el("p", { class: "small" }, "Sources: " + O.sources.map(s => s.publisher + ", " + s.title).join("; ") + ".")));
       draw(() => Charts.scatter(c1, { points: pts, xfmt: fx, yfmt: fy, xAxis: P.id === "waste" ? fx : v => "£" + nf0.format(v) + "k", yAxis: G.unit === "%" ? v => nf0.format(v) + "%" : v => nf0.format(v),
         xlabel: P.id === "waste" ? "Spending, £ per resident" : "Road maintenance, £ thousand per km a year", ylabel: G.outcome_label.replace(" (3-year average)", "") + (G.unit === "%" ? " (%)" : " (" + G.unit + ")"), trend: true, title: P.title + " scatter chart" }));
+    }
+    function paintNhs() {
+      const H = O.national.nhs, ms = H.months, i0 = ms.findIndex(m => m >= "2008-03"), mx = ms.slice(i0), L = ms.length - 1;
+      const at = m => ms.indexOf(m);
+      const w = H.waiting_m, pk = at(H.peak), m19 = at("2019-03");
+      const ys = H.years, y0 = "2007-08", yl = ys[ys.length - 1], y19 = "2019-20";
+      const sp = H.spend_real_bn, c1 = chartBox(), c2 = chartBox(), c3 = chartBox();
+      const std = H.standard_18w, lastMet = ms.filter((m, i) => H.within18_pct[i] != null && H.within18_pct[i] >= std).pop();
+      body.replaceChildren(
+        card("NHS waiting lists and health spending", "England's hospital waiting list (referral to treatment, RTT) beside what the UK spends on health, in real terms. No correlation is calculated: the pandemic, strikes and a changing list make a single statistic misleading.",
+          el("div", { class: "kpis" },
+            kpi("People waiting (pathways)", nf2.format(w[L]) + "m", `${monLabel(H.latest)} · peak ${nf2.format(w[pk])}m in ${monLabel(H.peak)} · ${nf2.format(w[m19])}m in Mar 2019`),
+            kpi("Seen within 18 weeks", pc(H.within18_pct[L]), `${monLabel(H.latest)} · the standard is ${std}% · ${pc(H.within18_pct[m19])} in Mar 2019`),
+            kpi("Waiting over 52 weeks", nf0.format(H.over52[L]), `${monLabel(H.latest)} · peak ${nf0.format(Math.max(...H.over52.filter(v => v != null)))}`),
+            kpi("Health spending (real terms)", bn(sp[yl]), `${yl} · ${dpc((sp[yl] / sp[y19] - 1) * 100)} on ${y19} · ${dpc((sp[yl] / sp[y0] - 1) * 100)} on ${y0}`))),
+        card("The waiting list", "Incomplete pathways at the end of each month, millions, with NHS England's estimates for trusts that did not report.", c1),
+        card("Waiting times against the standard", `Share of patients on the list who have waited 18 weeks or less. The constitutional standard is ${std}%; it was last met in ${monLabel(lastMet)}. (The first months of the series, 2007-08, were still being set up.)`, c2),
+        card("Health spending", "Treasury Health function for the whole UK, £ billion in 2025-26 prices The spike in 2020-21 is Covid-19 (testing, vaccines, equipment).", c3),
+        card("What the figures show", null, el("ul", { class: "tight" },
+          el("li", {}, `The waiting list grew from ${nf2.format(H.waiting_year_end_m["2012-13"])}m at March 2013 to ${nf2.format(H.waiting_year_end_m[y19])}m at March 2020, then to a peak of ${nf2.format(w[pk])}m in ${monLabel(H.peak)}; it was ${nf2.format(w[L])}m in ${monLabel(H.latest)}.`),
+          el("li", {}, `Real health spending is ${dpc((sp[yl] / sp[y19] - 1) * 100)} since ${y19} and ${dpc((sp[y19] / sp["2009-10"] - 1) * 100)} between 2009-10 and ${y19}; the list rose in most of those years.`),
+          el("li", {}, "The data cannot say how much shorter the list would have been with more or less money: demand, staffing, bed availability, social care capacity and strikes all matter, and spending is for the whole UK while the list is for England.")),
+          el("ul", { class: "tight" }, ...H.notes.map(n => el("li", {}, n))),
+          el("p", { class: "small" }, "Sources: NHS England, Referral to Treatment waiting times (RTT overview time series); HM Treasury Public Spending Statistics (Table 4.3, Health).")));
+      draw(() => lineChart(c1, { x: mx.map(monLabel), fmt: v => nf2.format(v) + "m", axisFmt: v => nf0.format(v) + "m", zero: true, title: "NHS waiting list", series: [{ name: "Incomplete pathways (millions)", values: H.waiting_m.slice(i0) }] }));
+      draw(() => lineChart(c2, { x: mx.map(monLabel), fmt: v => nf1.format(v) + "%", axisFmt: v => nf0.format(v) + "%", zero: false, title: "Within 18 weeks",
+        series: [{ name: "Seen within 18 weeks", values: H.within18_pct.slice(i0) }, { name: `Standard (${std}%)`, values: mx.map(() => std), dash: true }] }));
+      draw(() => lineChart(c3, { x: ys, fmt: v => bn(v), axisFmt: v => "£" + nf0.format(v) + "bn", zero: false, title: "Health spending (real)", series: [{ name: "Health spending, £bn (2025-26 prices)", values: ys.map(y => sp[y]) }] }));
     }
     function paintSchools() {
       const S = O.national.schools, ys = S.years, last = ys[ys.length - 1], y0 = ys[0];
@@ -930,7 +959,7 @@
       draw(() => lineChart(c3, { x: ys, fmt: v => nf1.format(v) + "%", axisFmt: v => nf0.format(v) + "%", zero: true, title: "Free school meals", series: [{ name: "Pupils taking free school meals", values: ys.map(y => S.fsm_pct[y]) }] }));
     }
     paint();
-    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned: planning decisions and housing (homelessness), children's social care and Ofsted, public health and life expectancy. NHS waiting lists are not yet included: NHS England's website blocks automated downloads, so the waiting-list file cannot be fetched by the data pipeline.")));
+    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned: planning decisions and housing (homelessness), children's social care and Ofsted, public health and life expectancy.")));
     return out;
   }
 

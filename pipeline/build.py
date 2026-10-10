@@ -25,6 +25,7 @@ import borrowing as B  # noqa: E402
 import councils as L  # noqa: E402
 import outcomes as OC  # noqa: E402
 import national as NT  # noqa: E402
+import nhs as NHS  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -268,6 +269,13 @@ def main():
     edu = next(r for r in functions["real"] if r["label"] == "9. Education")
     ees = lambda k: NT.rows_from_csv_bytes(fresh(RAW / f"{k}.csv.gz", lsrc[k]["url"], 24 * 7).read_bytes())
     oc["national"] = {"schools": NT.build(ees("ees_ks2"), ees("ees_ks4"), ees("ees_pupils"), functions["years"][:len(edu["values"])], edu["values"])}
+    def get_json(url):
+        ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+        return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read())
+    health = next(r for r in functions["real"] if r["label"] == "7. Health")["values"]
+    hgdp = next(r for r in functions["gdp"] if r["label"] == "7. Health")["values"]
+    rtt = NHS.read(fresh(RAW / "nhs_rtt.xlsx", lambda: NHS.discover(get_json), 24 * 3))
+    oc["national"]["nhs"] = NHS.build(rtt, functions["years"][:len(health)], health, hgdp)
     dump("outcomes.json", oc)
     dump("checks.json", {"checks": checks})      # written last, once every source has contributed its checks
 

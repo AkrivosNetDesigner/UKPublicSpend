@@ -35,6 +35,7 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 | Borrowing and debt: borrowing since 1946, net debt, who holds gilts, gilt yields, the price paid on new gilts, interest as a share of receipts | ONS annual and monthly series, DMO, Bank of England |
 | Local councils (England): spending by service, per resident / child / person aged 65+, peer comparison, reserves, schools deficits, interest, league tables, council profiles | MHCLG revenue outturn, ONS population |
 | What it buys: council waste and road spending against recycling rates and road condition, before and after allowing for deprivation | MHCLG, Defra, DfT, IoD2025 (`pipeline/outcomes.py`) |
+| What it buys (national): school results and NHS waiting lists against real spending over time | DfE explore-education-statistics API, NHS England RTT time series (found through its public REST API), HM Treasury |
 | Agreement between ONS and Treasury totals | ONS monthly TME summed per financial year vs PESA Table 4.1 |
 
 **Monthly data:** the Treasury's tables are annual, so monthly figures come from the ONS (public finances) and HMRC (tax receipts). ONS figures are not seasonally adjusted, and the latest months are provisional. ONS publishes borrowing as a negative number; the site shows it as positive.

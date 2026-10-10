@@ -87,6 +87,12 @@
     }
   },
   "apis": {
+    "nhs_rtt": {
+      "release": "RTT waiting times: overview time series, April 2007 to latest month",
+      "publisher": "NHS England",
+      "title": "Referral to treatment waiting times, England: RTT Overview Timeseries Including Estimates for Missing Trusts. The newest file link is read from NHS England's public WordPress REST API (the web pages themselves are behind a bot challenge).",
+      "url": "https://www.england.nhs.uk/statistics/statistical-work-areas/rtt-waiting-times/"
+    },
     "ees_ks2": {
       "release": "Key stage 2 attainment (to 2025-26 provisional)",
       "publisher": "Department for Education",
