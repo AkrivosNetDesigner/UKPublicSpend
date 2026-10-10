@@ -1,0 +1,6 @@
+{
+  // Serves the static site in ./site as a Cloudflare Worker (static assets only, no Worker script).
+  "name": "uk-public-spend",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./site" }
+}

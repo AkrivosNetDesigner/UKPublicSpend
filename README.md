@@ -60,3 +60,15 @@ python3 -m http.server -d site 8000       # then open http://localhost:8000
 ```
 
 `site/` is plain HTML/CSS/JS with no build step or external requests, so it can be hosted anywhere (e.g. GitHub Pages: publish the `site` folder). To pick up a new Treasury release, add its file URLs to `pipeline/sources.json` and re-run the build.
+
+## Deploy on Cloudflare Workers
+
+`wrangler.jsonc` serves `site/` as static assets (no Worker script needed):
+
+```bash
+npx wrangler login      # first time only
+npx wrangler deploy     # publishes to https://uk-public-spend.<your-subdomain>.workers.dev
+npx wrangler dev        # local preview
+```
+
+The data in `site/data/` is committed, so it deploys as-is. To refresh it, run `python3 pipeline/build.py` first (Treasury and HMRC publish each release at a new file URL, so update `pipeline/sources.json` when a new release appears; the ONS URL is stable).
