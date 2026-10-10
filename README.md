@@ -50,6 +50,10 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
 
+## Colour scheme
+
+The five brand colours (coral `#F78888`, yellow `#F3D250`, grey `#ECECEC`, sky `#90CCF4`, blue `#5DA2D5`) are used as-is for large surfaces: the header band, KPI tiles, notices and highlights. Pastels are too light for thin chart lines and small text, so chart series use deeper steps of the same hues (plus violet, green, orange and magenta). That eight-colour set was checked with a colour-blind-separation and contrast validator in both light and dark mode, and all text pairings meet WCAG AA. Everything is defined as CSS variables at the top of `site/style.css`.
+
 ## Run it
 
 ```bash
