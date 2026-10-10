@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import analysis as A  # noqa: E402
 import hmrc as H  # noqa: E402
+import ons as O  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -144,6 +145,13 @@ def main():
     rev_sum = H.taxgap_revision_summary(gap["revisions"])
     hflags = H.monthly_flags(rec["months"], rec["receipts_m"]) + H.taxgap_flags(rev_sum)
     checks += H.hmrc_checks(rec, gap)
+    # ---- ONS: monthly public sector finances
+    ons = O.parse_pusf(paths["ons_pusf"])
+    oflags = O.ons_flags(ons)
+    checks += O.ons_checks(ons, agg)
+    dump("ons.json", {"release": ons["release"], "months": ons["months"], "flags": oflags,
+                      "flag_types": {k: {"title": v[0], "text": v[1]} for k, v in O.ONS_FLAG_TEXT.items()},
+                      "series": [{"cdid": c, **{k: v for k, v in s.items()}} for c, s in ons["series"].items()]})
     dump("hmrc.json", {"months": rec["months"], "receipts_m": rec["receipts_m"], "spend_m": rec["spend_m"],
                        "fys": rec["fys"], "receipts_a": rec["receipts_a"], "spend_a": rec["spend_a"],
                        "taxgap": gap, "revision_summary": rev_sum, "revision_bias": H.recent_bias(rev_sum),
@@ -169,7 +177,7 @@ def main():
 
     print(f"segments: {len(segs)}  flags: {len(flags)}  by type: {dict(counts)}")
     print("checks:", {c['id']: c['status'] for c in checks})
-    print("function flags:", len(fn_flags), " hmrc flags:", len(hflags))
+    print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags))
 
 
 if __name__ == "__main__":

@@ -69,7 +69,7 @@
     const out = [];
     for (let i = 0; i < n; i += step) out.push(i);
     const last = out[out.length - 1];
-    if (last !== n - 1) { if (n - 1 - last >= step * 0.75) out.push(n - 1); else out[out.length - 1] = n - 1; }
+    if (last !== n - 1) { if (n - 1 - last >= step) out.push(n - 1); else out[out.length - 1] = n - 1; }
     return out;
   }
 

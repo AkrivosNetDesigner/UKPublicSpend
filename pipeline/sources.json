@@ -1,10 +1,11 @@
 {
-  "_note": "Every file below is published by HM Treasury or HMRC on GOV.UK (Treasury: the two permitted collections; HMRC added at the user's request). ONS is pending network access.",
+  "_note": "Every file below is published on GOV.UK by HM Treasury or HMRC, or by the ONS (HMRC and ONS added at the user's request).",
   "collections": [
     "https://www.gov.uk/government/collections/national-statistics-release",
     "https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa",
     "https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk",
-    "https://www.gov.uk/government/collections/measuring-tax-gaps"
+    "https://www.gov.uk/government/collections/measuring-tax-gaps",
+    "https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances"
   ],
   "release_page": "https://www.gov.uk/government/statistics/public-spending-statistics-release-july-2026",
   "files": {
@@ -55,6 +56,12 @@
       "publisher": "HMRC",
       "title": "Measuring tax gaps: online tables 2026 (estimates for 2005-06 to 2024-25)",
       "url": "https://assets.publishing.service.gov.uk/media/6a314f53141f0690ad5fa41e/Measuring_tax_gap_online_tables_2026.xlsx"
+    },
+    "ons_pusf": {
+      "release": "ONS Public sector finances, Aug 2026 (published 22 Sept 2026)",
+      "publisher": "ONS",
+      "title": "Public sector finances: monthly dataset (PUSF), non-seasonally adjusted, current prices, from April 1997",
+      "url": "https://www.ons.gov.uk/file?uri=/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances/current/pusf.csv"
     }
   }
 }

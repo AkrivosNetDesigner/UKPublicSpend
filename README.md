@@ -6,7 +6,7 @@ A static website for exploring where UK public money goes, year by year, with au
 
 - HM Treasury: <https://www.gov.uk/government/collections/national-statistics-release> (Public Spending Statistics) and <https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa> (PESA)
 - HMRC: [tax receipts and NICs](https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk) (monthly from April 2017) and [Measuring tax gaps](https://www.gov.uk/government/collections/measuring-tax-gaps)
-- ONS (Public Sector Finances, monthly): **not yet included**; the build environment could not reach `ons.gov.uk`
+- ONS: [Public sector finances](https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances) (monthly spending, receipts, borrowing and debt since April 1997)
 
 The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) and on the site's *Method & sources* page.
 
@@ -23,7 +23,10 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 | Monthly and annual tax receipts by tax; benefits HMRC pays | HMRC receipts statistics table |
 | Tax gap (£bn and %) by tax, behaviour and customer group; revisions between editions | HMRC Measuring tax gaps tables |
 
-**Monthly data:** HMRC receipts are monthly. Monthly government *spending* is published by the ONS (Public Sector Finances) and is not included yet; the Treasury's own tables are annual.
+| Monthly spending, receipts, borrowing, debt interest, net debt | ONS Public sector finances (22 series, selected by CDID) |
+| Agreement between ONS and Treasury totals | ONS monthly TME summed per financial year vs PESA Table 4.1 |
+
+**Monthly data:** the Treasury's tables are annual, so monthly figures come from the ONS (public finances) and HMRC (tax receipts). ONS figures are not seasonally adjusted, and the latest months are provisional. ONS publishes borrowing as a negative number; the site shows it as positive.
 
 ## Unusual-figure tests
 
@@ -41,7 +44,9 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 10. Share of spend in catch-all categories ("other", "unallocated", "provisions")
 11. Cross-table integrity checks (do totals add up and agree between tables?), including HMRC's receipts and tax gap tables
 12. Unusual months in HMRC tax receipts (year-on-year, scored per tax; a shock is reported once, not again as next year's rebound)
-13. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
+13. Unusual months in ONS public finance series since 2015 (same method; net borrowing and net investment excluded because they cross zero)
+14. ONS identities (spending − receipts = borrowing; central government current + capital = total) and ONS vs Treasury annual totals
+15. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
 

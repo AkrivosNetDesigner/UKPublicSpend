@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -97,9 +97,9 @@
         kpi("Since pre-pandemic", dpc(real19), `real-terms change vs 2019-20`),
         kpi("Tax received (HMRC)", mm(hm.recLast), `${hm.fy} · ${dpc(hm.recYoy)} on the year before`),
         kpi("Tax not collected", bn(hm.gap), `${hm.gapYear} estimate · ${pc(hm.gapPct)} of tax due`),
-        kpi("High-priority flags", String(high + hm.high), "unusual figures to look at first"),
+        kpi("High-priority flags", String(high + hm.high + D.ons.flags.filter(f => f.sev === 3).length), "unusual figures to look at first"),
       ),
-      el("div", { class: "notice info" }, el("b", {}, "Monthly figures: "), "HMRC tax receipts, and the benefits HMRC pays, are published monthly (see ", el("a", { href: "#/tax" }, "Tax & tax gap"), "). Government spending itself is only published annually by the Treasury; monthly spending comes from the ONS Public Sector Finances, which this version does not include yet."),
+      el("div", { class: "notice info" }, el("b", {}, "Month by month: "), "the Treasury's spending tables are annual. For monthly figures see ", el("a", { href: "#/monthly" }, "Monthly finances"), " (ONS: spending, receipts, borrowing and debt interest) and ", el("a", { href: "#/tax" }, "Tax & tax gap"), " (HMRC receipts)."),
     );
     const g = el("div", { class: "grid g2" });
     const c1 = chartBox(), c2 = chartBox(), c3 = chartBox(), c4 = chartBox();
@@ -445,6 +445,86 @@
     return wrap;
   }
 
+  /* ---------- Monthly finances (ONS Public Sector Finances) */
+  const fyOf = k => { const y = +k.slice(0, 4), m = +k.slice(5); const s = m >= 4 ? y : y - 1; return `${s}-${String(s + 1).slice(2)}`; };
+  const monState = { range: "120", series: "KX5Q", basis: "nominal" };
+  const NEAR_ZERO = new Set(["J5II", "JW2Z"]);
+  VIEWS.monthly = () => {
+    const O = D.ons, S = Object.fromEntries(O.series.map(s => [s.cdid, s])), months = O.months, li = months.length - 1;
+    const val = (c, i) => S[c].values[i];
+    const fyStart = months.findLastIndex((m, i) => m.endsWith("-04") && i <= li);
+    const ytd = (c, off = 0) => S[c].values.slice(fyStart - off, li + 1 - off).reduce((a, v) => a + (v || 0), 0);
+    const nM = li - fyStart + 1;
+    const root = el("div", {}, el("h2", {}, "Month by month: spending, receipts and borrowing"),
+      el("p", { class: "lede" }, `The Office for National Statistics publishes the public sector finances every month. Latest month: ${monLabel(months[li])}. Figures are cash-value (not inflation-adjusted) and not seasonally adjusted, so compare each month with the same month in earlier years. Public sector figures exclude the public sector banks, matching the Treasury's total managed expenditure.`),
+      el("div", { class: "kpis" },
+        kpi(`Public spending, ${monLabel(months[li])}`, mm(val("KX5Q", li)), `${dpc((val("KX5Q", li) / val("KX5Q", li - 12) - 1) * 100)} on ${monLabel(months[li - 12])}`),
+        kpi(`Borrowing, ${monLabel(months[li])}`, mm(val("J5II", li)), `${mm(val("J5II", li - 12))} a year earlier`),
+        kpi(`Spending since April ${months[fyStart].slice(0, 4)}`, mm(ytd("KX5Q")), `${nM} months · ${dpc((ytd("KX5Q") / ytd("KX5Q", 12) - 1) * 100)} on the same months last year`),
+        kpi(`Borrowing since April ${months[fyStart].slice(0, 4)}`, mm(ytd("J5II")), `${mm(ytd("J5II", 12))} in the same months last year`),
+        kpi(`Debt interest since April ${months[fyStart].slice(0, 4)}`, mm(ytd("NMFX")), `central government · ${dpc((ytd("NMFX") / ytd("NMFX", 12) - 1) * 100)} on the same months last year`),
+        kpi("Net debt", bn(val("KSE6", li) / 1000), `end of ${monLabel(months[li])}`)));
+    const body = el("div", {});
+    root.append(el("div", { class: "controls" }, select("mr", "Time range", [["36", "Last 3 years"], ["120", "Last 10 years"], ["999", "Since 1997"]], monState.range, v => { monState.range = v; build(); })), body);
+    build();
+    return root;
+
+    function build() {
+      body.replaceChildren();
+      const n = Math.min(+monState.range, months.length), from = months.length - n, xs = months.slice(from).map(monLabel);
+      const sl = c => S[c].values.slice(from);
+      // 1. headline
+      const c1 = chartBox();
+      body.append(card("Spending, receipts and borrowing", "Total public sector spending and current receipts each month, £ million. Borrowing is the gap between them; it peaks around the pandemic.", c1));
+      draw(() => lineChart(c1, { x: xs, fmt: mm, axisFmt: mm, zero: true, title: "Public sector spending, receipts and borrowing",
+        series: [{ name: "Total managed expenditure", values: sl("KX5Q") }, { name: "Current receipts", values: sl("JW2O") }, { name: "Net borrowing", values: sl("J5II") }] }));
+      // 2. any series
+      const opts = O.series.map(s => [s.cdid, `${s.group.replace(" (excluding banks)", "")}: ${s.label}`]);
+      const c2 = chartBox(), c3 = chartBox();
+      const lab = S[monState.series].label, fl = O.flags.filter(f => f.tax === lab && months.slice(from).includes(f.month));
+      body.append(card("Explore any series", "Choose a spending, tax or borrowing series. Shaded months are unusual compared with the same month a year earlier (see Unusual figures).",
+        el("div", { class: "controls" }, select("ms", "Series", opts, monState.series, v => { monState.series = v; build(); })), c2));
+      draw(() => lineChart(c2, { x: xs, fmt: mm, axisFmt: mm, zero: true, title: lab, series: [{ name: lab, values: sl(monState.series) }], bands: fl.map(f => ({ x: monLabel(f.month) })) }));
+      if (!S[monState.series].stock) {
+        const fyList = [...new Set(months.map(fyOf))].slice(-5).reverse().map(s => +s.slice(0, 4));
+        const order = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3], col = S[monState.series].values;
+        const ser = fyList.map(fy => ({ name: `${fy}-${String(fy + 1).slice(2)}`, values: order.map(mo => { const y = mo >= 4 ? fy : fy + 1, i = months.indexOf(`${y}-${String(mo).padStart(2, "0")}`); return i < 0 ? null : col[i]; }) }));
+        body.append(card("The same months across years", "One line per financial year, April to March.", c3));
+        draw(() => lineChart(c3, { x: order.map(m => MON[m - 1]), fmt: mm, axisFmt: mm, zero: true, height: 250, title: "Seasonal comparison", series: ser }));
+      }
+      // 3. where central government money goes (financial-year stack)
+      const real = monState.basis === "real";
+      const fys = [...new Set(months.map(fyOf))].filter(f => months.filter(m => fyOf(m) === f).length === 12);
+      const fsum = c => fys.map(f => months.reduce((a, m, i) => a + (fyOf(m) === f ? (val(c, i) || 0) : 0), 0) * (real ? rf(f) : 1));
+      const parts = [["Goods and services", "NMBJ"], ["Social benefits", "GZSJ"], ["Interest on debt", "NMFX"], ["Subsidies", "NMCD"], ["Other grants", "NMFC"]];
+      const stack = parts.map(([nm, c]) => ({ name: nm, values: fsum(c) }));
+      const cur = fsum("MF6S"), cap = fsum("MF6T");
+      stack.push({ name: "Capital spending", values: cap });
+      stack.push({ name: "Other", values: fys.map((_, i) => cur[i] - stack.slice(0, 5).reduce((a, s) => a + s.values[i], 0)) });
+      const c4 = chartBox();
+      body.append(card("What central government spends money on", "Financial-year totals, £ million, adding up the monthly figures. “Other” is whatever remains of current spending after the listed items (for example public service pensions and transfers within government).",
+        el("div", { class: "controls" }, select("mb", "Basis", [["nominal", "Cash (nominal)"], ["real", "Real terms (2025-26 prices)"]], monState.basis, v => { monState.basis = v; build(); })), c4));
+      draw(() => stackedBars(c4, { x: fys, series: stack, fmt: mm, axisFmt: mm, title: "Central government spending by type" }));
+      // 4. cost of debt and net debt
+      const roll = S.NMFX.values.map((_, i) => i < 11 ? null : S.NMFX.values.slice(i - 11, i + 1).reduce((a, v) => a + v, 0));
+      const c5 = chartBox(), c6 = chartBox();
+      body.append(el("div", { class: "grid g2" },
+        card("The cost of debt", "Central government net interest payable, rolling 12-month total, £ million. It rises with borrowing, interest rates and inflation-linked gilts.", c5),
+        card("Net debt", "Public sector net debt (excluding public sector banks) at the end of each month, £ million.", c6)));
+      draw(() => lineChart(c5, { x: xs, fmt: mm, axisFmt: mm, zero: true, height: 250, title: "Rolling 12-month interest", series: [{ name: "Net interest payable, 12 months", values: roll.slice(from) }] }));
+      draw(() => lineChart(c6, { x: xs, fmt: mm, axisFmt: mm, zero: true, height: 250, title: "Net debt", series: [{ name: "Net debt", values: sl("KSE6") }] }));
+      // 5. table
+      const keys = ["KX5Q", "JW2O", "J5II", "MF6U", "NMBJ", "GZSJ", "NMFX", "NMCD", "MF73", "KSS8", "NZGF", "LIBP", "CUDG", "ANLQ"];
+      const rows = keys.map(c => {
+        const a = val(c, li), b = val(c, li - 12), ya = ytd(c), yb = ytd(c, 12), nz = NEAR_ZERO.has(c);
+        return el("tr", { class: "click", onclick: () => { monState.series = c; build(); }, title: "Chart this series" },
+          el("td", {}, S[c].label), el("td", { class: "n" }, mm(a)), el("td", { class: "n" }, nz ? mm(a - b) : dpc((a / b - 1) * 100)), el("td", { class: "n" }, mm(ya)), el("td", { class: "n" }, nz ? mm(ya - yb) : dpc((ya / yb - 1) * 100)));
+      });
+      body.append(card(`Latest month: ${monLabel(months[li])}`, "Click a row to chart it above. For borrowing, changes are shown in £ rather than %. The latest months are provisional and will be revised.",
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Series", monLabel(months[li]), "vs a year ago", "Year to date", "vs same period last year"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))), el("tbody", {}, rows)))));
+    }
+  };
+
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   VIEWS.compare = () => {
@@ -512,6 +592,8 @@
     const hf = D.hmrc.flags, hTiles = [["monthly_jump", "Unusual change in monthly tax receipts"], ["taxgap_revision", "Tax gap estimate later revised"]];
     hTiles.forEach(([k, t]) => tiles.append(el("button", { class: "kpi", style: "text-align:left;cursor:pointer", onclick: () => document.getElementById("hmrc-flags").scrollIntoView({ behavior: "smooth" }) },
       el("div", { class: "l" }, t), el("div", { class: "v" }, String(hf.filter(f => f.type === k).length)), el("div", { class: "d" }, "in HMRC statistics"))));
+    tiles.append(el("button", { class: "kpi", style: "text-align:left;cursor:pointer", onclick: () => document.getElementById("ons-flags").scrollIntoView({ behavior: "smooth" }) },
+      el("div", { class: "l" }, D.ons.flag_types.ons_monthly_jump.title), el("div", { class: "v" }, String(D.ons.flags.length)), el("div", { class: "d" }, "in ONS monthly series")));
     root.append(tiles);
     const listWrap = el("div", {});
     root.append(listWrap);
@@ -527,7 +609,7 @@
       el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Year", "What happened"].map(h => el("th", {}, h)))),
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
     root.append(fl);
-    root.append(hmrcFlagsCard(), benfordCard(), opacityCard());
+    root.append(hmrcFlagsCard(), onsFlagsCard(), benfordCard(), opacityCard());
     return root;
 
     function rebuild() {
@@ -582,6 +664,23 @@
     return out;
   }
 
+  const oState = { sev: 2, limit: 15 };
+  function onsFlagsCard() {
+    const out = el("section", { class: "card", id: "ons-flags" });
+    function paint() {
+      const fl = D.ons.flags.filter(f => f.sev >= oState.sev);
+      out.replaceChildren(el("h3", {}, "ONS: unusual months in the public finances (since 2015)"),
+        el("p", { class: "sub" }, D.ons.flag_types.ons_monthly_jump.text + " Scores use each series' full history since 1997; a shock is reported once, and the rebound a year later is treated as a base effect. Net borrowing and net investment are not screened because they swing around zero."),
+        el("div", { class: "controls" }, select("os", "Minimum severity", [["3", "High only"], ["2", "Medium and above"], ["1", "Everything"]], String(oState.sev), v => { oState.sev = +v; oState.limit = 15; paint(); })),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Month", "Series", "Amount", "What happened"].map((h, i) => el("th", { class: i === 3 ? "n" : "" }, h)))),
+          el("tbody", {}, fl.slice(0, oState.limit).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, monLabel(f.month)), el("td", {}, f.tax), el("td", { class: "n" }, mm(f.value)), el("td", {}, f.detail)))))),
+        fl.length > oState.limit ? el("p", {}, el("button", { onclick: () => { oState.limit += 25; paint(); } }, `Show more (${fl.length - oState.limit} left)`)) : null,
+        el("p", { class: "small" }, "In 2020-23 most of these are the pandemic support schemes (furlough was paid as subsidies) and the energy-price support."));
+    }
+    paint();
+    return out;
+  }
+
   function benfordCard() {
     const B = D.flags.benford;
     const sel = el("select", { id: "bsel", onchange: e => paint(e.target.value) }, B.depts.map(d => el("option", { value: d.dept }, d.dept)));
@@ -612,11 +711,11 @@
   VIEWS.checks = () => {
     const C = D.checks.checks;
     const root = el("div", {}, el("h2", {}, "Do the official tables add up?"),
-      el("p", { class: "lede" }, "The Treasury and HMRC publish the same totals in several tables. These checks recompute sums and compare tables against each other. A gap is not proof of error (rounding, timing and revisions all matter) but it is exactly what a careful reader would want pointed out."));
+      el("p", { class: "lede" }, "The Treasury, HMRC and the ONS publish overlapping totals in several tables. These checks recompute sums and compare tables against each other. A gap is not proof of error (rounding, timing and revisions all matter) but it is exactly what a careful reader would want pointed out."));
     root.append(el("div", { class: "kpis" }, kpi("Pass", String(C.filter(c => c.status === "pass").length), "agree within rounding"), kpi("Discrepancy", String(C.filter(c => c.status === "warn").length), "outside rounding tolerance"), kpi("Documented gap", String(C.filter(c => c.status === "info").length), "explained in the source notes")));
     let lastSource = null;
     C.forEach(c => {
-      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, lastSource === "HMRC" ? "HMRC tables" : "HM Treasury tables")); }
+      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
       const unit = /£bn/.test(c.title) ? "£bn" : /£m/.test(c.title) ? "£m" : "";
       const tol = c.tolerance > 1e9 ? 0 : c.tolerance;
       const head = el("tr", {}, ["Year", "Expected", "Table shows", "Gap"].map((h, i) => el("th", { class: i ? "n" : "" }, h)));
@@ -638,12 +737,13 @@
   VIEWS.method = () => {
     const P = D.flags.params, T = D.flags.types, T_ = D.hmrc.flag_types;
     const root = el("div", {}, el("h2", {}, "Method & sources"));
-    root.append(card("Sources (and only these)", "Every number comes from a file published on GOV.UK by HM Treasury (Public Spending Statistics and PESA) or by HMRC (tax receipts and tax gap statistics). The ONS Public Sector Finances are not included yet.",
+    root.append(card("Sources (and only these)", "Every number comes from an official file: HM Treasury (Public Spending Statistics and PESA) and HMRC (tax receipts and tax gap statistics), both on GOV.UK, and the ONS Public Sector Finances dataset.",
       el("ul", { class: "tight" }, D.meta.collections.map(u => el("li", {}, el("a", { href: u, rel: "noopener" }, u)))),
       el("p", { class: "small" }, "Files used (all downloaded and processed by pipeline/build.py in the project, so anyone can reproduce the data):"),
       el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, "download")))))))));
     root.append(card("What the site can and cannot tell you", null, el("ul", { class: "tight" },
-      el("li", {}, el("b", {}, "Spending is annual. "), "The Treasury publishes financial-year outturn. Monthly figures here are HMRC's: tax receipts, and the benefits HMRC pays. Monthly government spending (ONS) is not included yet."),
+      el("li", {}, el("b", {}, "Spending is annual. "), "The Treasury publishes financial-year outturn. Monthly figures come from the ONS (spending, receipts, borrowing, debt) and HMRC (tax receipts). ONS monthly figures are not seasonally adjusted and are revised; the latest months are provisional. ONS does not publish earlier versions of the dataset, so how much each month was later revised cannot be tested."),
+      el("li", {}, el("b", {}, "Borrowing sign. "), "ONS publishes net borrowing as a negative number; the site shows borrowing as positive. The Treasury's totals are built on ONS data, so the two agree almost exactly in older years; that is not an independent test."),
       el("li", {}, el("b", {}, "Tax gap is an estimate. "), "HMRC builds it from sampling, models and assumptions; it is not a count of detected fraud, and recent years are routinely revised."),
       el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud. The nearest thing to a fraud measure is HMRC's tax gap by behaviour (evasion, criminal attacks, error…). Benefit fraud and error rates (DWP) are not included."),
       el("li", {}, el("b", {}, "Coverage. "), "The line-by-line database covers departmental budgets only (DEL and departmental AME) and, by the Treasury's own note, excludes the Security and Intelligence Agencies and military operations costs. Long-run totals and function splits (Chapter 4) cover everything."),
@@ -662,9 +762,12 @@
         trow("Benford first-digit test", "Compares the distribution of leading digits of all amounts in a department with Benford's law, using Nigrini's mean absolute deviation scale.", `needs ≥ ${P.benford_min_n} amounts; ≥ 1,000 for reliable`),
         trow("Catch-all spending share", "Share of positive spending in “other”, “unallocated” and “provision” categories, which carry little information about what was bought.", `flag if ≥ ${P.opaque_share_flag * 100}% and rising ≥ ${P.opaque_rise_pp}pp`),
         trow(T_.monthly_jump.title, "Same method as the spending-line jump test, applied to each tax's receipts compared with the same month a year earlier (median/MAD score against that tax's own history). A shock is reported once; a rebound twelve months later is treated as a base effect.", "score ≥ 4; change ≥ £300m a month"),
+        trow(D.ons.flag_types.ons_monthly_jump.title, "The HMRC monthly method applied to ONS spending, receipt and debt-interest series from 2015, scored against each series' history since 1997.", "score ≥ 4; change ≥ £300m a month"),
         trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
         trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));
+    root.append(card("ONS series used", "Official ONS titles, so you can look each one up by its four-letter code (CDID) on ons.gov.uk.",
+      el("details", { class: "tbl" }, el("summary", {}, `Show all ${D.ons.series.length} series`), el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.ons.series.map(x => el("tr", {}, el("td", {}, el("code", {}, x.cdid)), el("td", {}, x.title), el("td", {}, x.sign < 0 ? "shown with sign reversed" : ""))))))))); 
     root.append(card("Priority score", null, el("p", { class: "small" }, "Per spending line: Low = 1 point, Medium = 3, High = 6, summed over all its flags, plus 2 for each additional kind of flag. Lines are ranked by score, then size. It is deliberately simple so anyone can reproduce it.")));
     root.append(card("Reproduce it", null, el("p", { class: "small" }, "Run "), el("pre", { style: "overflow:auto" }, "python3 pipeline/build.py\npython3 -m unittest discover -s pipeline/tests")));
     return root;
@@ -673,15 +776,15 @@
 
   /* --------------------------------------------------------------- boot */
   async function boot() {
-    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc"];
+    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons"];
     try {
       const res = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => { if (!r.ok) throw new Error(n); return r.json(); })));
-      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc] = res;
+      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons] = res;
     } catch (e) {
       main.replaceChildren(el("div", { class: "notice" }, "Could not load the data files. If you opened index.html directly from disk, serve the folder instead (for example: python3 -m http.server -d site)."));
       return;
     }
-    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks) and HMRC receipts and tax gap statistics. Processed ${D.meta.generated}.`;
+    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, and ONS public sector finances (${D.ons.release}). Processed ${D.meta.generated}.`;
     route();
   }
   boot();

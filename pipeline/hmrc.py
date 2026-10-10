@@ -53,6 +53,10 @@ def month_label(key):  # "2021-05" -> "May 2021"
     return f"{name} {key[:4]}"
 
 
+def money_m(v):  # £m with a proper minus sign: -5266 -> "−£5,266m"
+    return f"{'−' if v < 0 else ''}£{abs(v):,.0f}m"
+
+
 def fy_of(month):  # "2017-04" -> "2017-18"
     y, m = int(month[:4]), int(month[5:])
     s = y if m >= 4 else y - 1
@@ -138,7 +142,7 @@ MONTHLY_FLAG_TEXT = {
 }
 
 
-def monthly_flags(months, cols, min_median=300, z_min=4.0, min_change=300, mad_floor=0.03):
+def monthly_flags(months, cols, min_median=300, z_min=4.0, min_change=300, mad_floor=0.03, noun="tax", ftype="monthly_jump"):
     """Year-on-year change for each tax, scored against that tax's own history (median/MAD).
 
     A jump is reported once: if the same tax moved sharply the opposite way twelve months
@@ -176,10 +180,10 @@ def monthly_flags(months, cols, min_median=300, z_min=4.0, min_change=300, mad_f
                 continue
             sev = 3 if abs(z) >= 8 and abs(d) >= 1000 else 2 if abs(z) >= 5.5 and abs(d) >= 500 else 1
             label = "Total HMRC receipts" if name == "Total HMRC Receipts" else re.sub(r"\s*\(included within[^)]*\)", "", name)
-            flags.append({"type": "monthly_jump", "sev": sev, "tax": name, "month": months[i], "value": vals[i], "prev": vals[i - 12],
+            flags.append({"type": ftype, "sev": sev, "tax": name, "month": months[i], "value": vals[i], "prev": vals[i - 12],
                           "z": round(z, 1),
-                          "detail": f"{label} were £{vals[i]:,.0f}m in {month_label(months[i])}, {'up' if d > 0 else 'down'} £{abs(d):,.0f}m "
-                                    f"({x*100:+.0f}%) on {month_label(months[i - 12])}; the usual year-on-year change for this tax is {med*100:+.0f}% "
+                          "detail": f"{label}: {money_m(vals[i])} in {month_label(months[i])}, {'up' if d > 0 else 'down'} {money_m(abs(d))} "
+                                    f"({x*100:+.0f}%) on {month_label(months[i - 12])}. The usual year-on-year change for this {noun} is {med*100:+.0f}% "
                                     f"(score {abs(z):.1f})."})
     flags.sort(key=lambda f: (-f["sev"], -abs(f["z"])))
     return flags
