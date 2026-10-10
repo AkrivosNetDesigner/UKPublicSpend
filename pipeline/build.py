@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import analysis as A  # noqa: E402
 import hmrc as H  # noqa: E402
 import ons as O  # noqa: E402
+import dwp as W  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -145,6 +146,11 @@ def main():
     rev_sum = H.taxgap_revision_summary(gap["revisions"])
     hflags = H.monthly_flags(rec["months"], rec["receipts_m"]) + H.taxgap_flags(rev_sum)
     checks += H.hmrc_checks(rec, gap)
+    # ---- DWP: fraud and error in the benefit system
+    dwp, dflags, dchecks = W.build({"2024": paths["dwp_2024"], "2025": paths["dwp_2025"], "2026": paths["dwp_2026"]})
+    checks += dchecks + [W.dwp_vs_treasury(dwp, t11, rec)]
+    dump("dwp.json", {**dwp, "flags": dflags, "flag_types": {k: {"title": v[0], "text": v[1]} for k, v in W.DWP_FLAG_TEXT.items()}})
+
     # ---- ONS: monthly public sector finances
     ons = O.parse_pusf(paths["ons_pusf"])
     oflags = O.ons_flags(ons)
@@ -177,7 +183,7 @@ def main():
 
     print(f"segments: {len(segs)}  flags: {len(flags)}  by type: {dict(counts)}")
     print("checks:", {c['id']: c['status'] for c in checks})
-    print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags))
+    print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags), " dwp flags:", len(dflags))
 
 
 if __name__ == "__main__":

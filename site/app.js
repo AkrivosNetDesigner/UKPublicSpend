@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["benefits", "Benefit fraud & error"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -117,12 +117,12 @@
       el("div", { class: "kpis" },
         kpi("Total public spending", bn(last.tme), `${last.year} · ${pc(last.tme_gdp)} of GDP`),
         kpi("Change in real terms", dpc(realCh), `vs ${prev.year} (price-adjusted)`),
-        kpi("Since pre-pandemic", dpc(real19), `real-terms change vs 2019-20`),
+        kpi("Benefits overpaid (DWP)", mm(D.dwp.all.total.at(-1).est), `${D.dwp.all.total.at(-1).year} · ${pc(D.dwp.all.pct.total.at(-1).est)} of benefit spending`),
         kpi("Tax received (HMRC)", mm(hm.recLast), `${hm.fy} · ${dpc(hm.recYoy)} on the year before`),
         kpi("Tax not collected", bn(hm.gap), `${hm.gapYear} estimate · ${pc(hm.gapPct)} of tax due`),
-        kpi("High-priority flags", String(high + hm.high + D.ons.flags.filter(f => f.sev === 3).length), "unusual figures to look at first"),
+        kpi("High-priority flags", String(high + hm.high + D.ons.flags.filter(f => f.sev === 3).length + D.dwp.flags.filter(f => f.sev === 3).length), "unusual figures to look at first"),
       ),
-      el("div", { class: "notice info" }, el("b", {}, "Month by month: "), "the Treasury's spending tables are annual. For monthly figures see ", el("a", { href: "#/monthly" }, "Monthly finances"), " (ONS: spending, receipts, borrowing and debt interest) and ", el("a", { href: "#/tax" }, "Tax & tax gap"), " (HMRC receipts)."),
+      el("div", { class: "notice info" }, el("b", {}, "Month by month: "), "the Treasury's spending tables are annual. For monthly figures see ", el("a", { href: "#/monthly" }, "Monthly finances"), " (ONS: spending, receipts, borrowing and debt interest) and ", el("a", { href: "#/tax" }, "Tax & tax gap"), " (HMRC receipts). For benefit fraud and error see ", el("a", { href: "#/benefits" }, "Benefit fraud & error"), "."),
     );
     const g = el("div", { class: "grid g2" });
     const c1 = chartBox(), c2 = chartBox(), c3 = chartBox(), c4 = chartBox();
@@ -557,6 +557,104 @@
     }
   };
 
+  /* ---------- Benefit fraud and error (DWP) */
+  const benState = { mode: "amount", measure: "total", benefit: "Universal Credit", reasonBenefit: "Universal Credit" };
+  const bnM = v => (v == null ? "–" : mm(v));
+  const ago = b => b.months_since == null ? "never reviewed" : b.months_since <= 12 ? "within the last year" : `${nf1.format(b.months_since / 12)} years ago`;
+  const DEFS = [["Fraud", "A claimant deliberately tried to get money they were not entitled to."], ["Claimant error", "A genuine, unintentional mistake by the claimant."], ["Official error", "A mistake made by DWP, HMRC or a local authority."]];
+  VIEWS.benefits = () => {
+    const W = D.dwp, all = W.all, last = k => all[k].at(-1), pctL = k => all.pct[k].at(-1), prevY = all.total.at(-2);
+    const uc = W.benefits.find(b => b.name === "Universal Credit"), cov = W.coverage, old = cov.buckets["more than 3 years ago"] + cov.buckets["never reviewed"];
+    const net = W.net.net.at(-1);
+    const root = el("div", {}, el("h2", {}, "Fraud and error in the benefit system"),
+      el("p", { class: "lede" }, `Each year the Department for Work and Pensions (DWP) estimates how much benefit money was paid out wrongly, by sampling cases and checking them. Figures cover Great Britain, are estimates with a margin of error, and the latest is for ${last("total").year}. “Overpaid” means too much was paid; it is not the same as proven fraud, and the three types below are estimated separately.`),
+      el("div", { class: "kpis" },
+        kpi("Overpaid", mm(last("total").est), `${last("total").year} · ${pc(pctL("total").est)} of ${bn(last("expenditure").est / 1000)} · range ${bn(last("total").lo / 1000)}–${bn(last("total").hi / 1000)}`),
+        kpi("Of which fraud", mm(last("fraud").est), `${pc(pctL("fraud").est)} of benefit spending`),
+        kpi("Lost after recoveries", mm(net.est), `${pc(W.net.pct_net.at(-1).est)} of spending`),
+        kpi("Underpaid by official error", mm(W.under.official.at(-1).est), "people owed money they did not receive"),
+        kpi("Universal Credit", pc(uc.pct.est), `overpaid · ${uc.cases_pct ? nf0.format(uc.cases_pct.est) + "% of cases had an overpayment error" : ""}`)));
+    root.append(el("div", { class: "notice" }, el("b", {}, "How old is the evidence? "), `${bn(old / 1000)} of benefit spending (${pc(old / cov.total_expenditure * 100)}) rests on a fraud and error rate that was last measured more than three years ago, or never. The headline figure is a mix of fresh and carried-forward estimates. See “How recently each benefit was measured” below.`));
+    const body = el("div", {});
+    root.append(body);
+    build();
+    return root;
+
+    function build() {
+      body.replaceChildren();
+      // 1. over time
+      const years = all.total.map(p => p.year), bySer = (k, src) => src[k].map(p => p.est);
+      const byYear = (arr) => Object.fromEntries(arr.map(p => [p.year, p.est]));
+      const c1 = chartBox();
+      const rate = benState.mode === "rate";
+      const mk = (name, color, src) => ({ name, color, values: years.map(y => (byYear(src)[y] ?? null)) });
+      const series = rate
+        ? [mk("Fraud", "var(--s2)", all.pct.fraud), mk("Claimant error", "var(--s4)", all.pct.claimant), mk("Official error", "var(--s1)", all.pct.official)]
+        : [mk("Fraud", "var(--s2)", all.fraud), mk("Claimant error", "var(--s4)", all.claimant), mk("Official error", "var(--s1)", all.official)];
+      body.append(card("How much is overpaid each year", "Central estimates. Estimates before 2016-17 for some benefits are less detailed, and from 2022-23 some underpayments were reclassified, so older and newer years are not perfectly comparable (see Method).",
+        el("div", { class: "controls" }, select("bmode", "Show", [["amount", "Amount overpaid (£ million)"], ["rate", "Share of benefit spending (%)"]], benState.mode, v => { benState.mode = v; build(); })), c1));
+      draw(() => stackedBars(c1, { x: years, series, fmt: rate ? v => nf1.format(v) + "%" : mm, axisFmt: rate ? v => v + "%" : mm, title: "Benefit overpayments by type" }));
+      body.append(el("div", { class: "grid", style: "margin-bottom:18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))" }, ...DEFS.map(([t, d]) => el("div", { class: "card", style: "margin:0" }, el("h3", {}, t), el("p", { class: "small", style: "margin:0" }, d)))));
+
+      // 2. confidence range of the headline rate
+      const c2 = chartBox();
+      body.append(card("The headline rate and its margin of error", "Total overpaid as a share of all benefit spending, with the lower and upper ends of DWP's confidence range. A bigger gap means a less certain estimate.", c2));
+      draw(() => lineChart(c2, { x: years, fmt: pc, axisFmt: v => v + "%", zero: true, height: 230, title: "Overpayment rate",
+        series: [{ name: "Estimate", values: all.pct.total.map(p => p.est) }, { name: "Upper", values: all.pct.total.map(p => p.hi), dash: true, color: "var(--other)" }, { name: "Lower", values: all.pct.total.map(p => p.lo), dash: true, color: "var(--other)" }] }));
+
+      // 3. by benefit
+      const rows = W.benefits.filter(b => b.expenditure && b.expenditure >= 1000 && b.total.est != null);
+      const m = benState.measure;
+      const val = b => m === "total" ? b.total.est : m === "pct" ? b.pct.est : b.fraud.est;
+      const items = rows.map(b => ({ label: b.name, value: val(b), b })).sort((a, z) => z.value - a.value);
+      const c3 = chartBox();
+      body.append(card("Which benefits", "Benefits with at least £1bn of spending. Click a row in the table for the reasons behind its errors.",
+        el("div", { class: "controls" }, select("bmeas", "Measure", [["total", "Amount overpaid (£ million)"], ["pct", "Share of the benefit's spending (%)"], ["fraud", "Amount lost to fraud (£ million)"]], m, v => { benState.measure = v; build(); })), c3));
+      const f = m === "pct" ? v => nf1.format(v) + "%" : mm;
+      draw(() => barChart(c3, { items: items.map(i => ({ label: i.label, value: i.value, color: i.b.months_since > 36 ? "var(--s4)" : "var(--s1)" })), fmt: f, axisFmt: f, tipFmt: it => { const b = items.find(x => x.label === it.label).b; return `${f(it.value)} · ${pc(b.pct.est)} of ${bn(b.expenditure / 1000)} · measured ${ago(b)}`; } }));
+      body.append(el("p", { class: "small" }, el("span", { class: "sw", style: "display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--s4);margin-right:6px" }), "Amber bars: the rate was last measured more than three years ago."));
+      const trs = W.benefits.filter(b => b.total.est != null && (b.expenditure || b.name === "Interdependencies")).map(b => el("tr", { class: "click", onclick: () => { benState.reasonBenefit = W.reasons.find(r => r.benefit === b.name) ? b.name : benState.reasonBenefit; build(); jumpTo("reasoncard"); }, title: "Show the reasons" },
+        el("td", {}, b.name), el("td", { class: "n" }, b.expenditure ? bn(b.expenditure / 1000) : "–"), el("td", { class: "n" }, mm(b.total.est)), el("td", { class: "n" }, b.pct.est == null ? "–" : pc(b.pct.est)),
+        el("td", { class: "n" }, bnM(b.fraud.est)), el("td", { class: "n" }, b.total.lo == null ? "–" : `${mm(b.total.lo)} – ${mm(b.total.hi)}`),
+        el("td", {}, b.months_since > 36 || b.months_since == null ? el("span", { class: "pill", style: "background:var(--yellow);color:#1B1B1B" }, ago(b)) : ago(b))));
+      body.append(card("Every benefit", "Benefits that have closed (Income Support, Incapacity Benefit) have no current spending and are left out.", el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Benefit", "Spending", "Overpaid", "Rate", "Of which fraud", "Range", "Last measured"].map((h, i) => el("th", { class: i && i < 6 ? "n" : "" }, h)))), el("tbody", {}, trs)))));
+
+      // 4. reasons
+      const rb = W.reasons.find(r => r.benefit === benState.reasonBenefit) || W.reasons[0];
+      const top = rb.reasons.filter(x => x.level === 0 && x.reason !== "Total" && x.total.est).sort((a, z) => z.total.est - a.total.est);
+      const c4 = chartBox();
+      body.append(el("section", { class: "card", id: "reasoncard" }, el("h3", {}, "What goes wrong"), el("p", { class: "sub" }, "The reason for each overpayment found by DWP's checks, 2025-26. Fraud is shown as part of each total."),
+        el("div", { class: "controls" }, select("rsel", "Benefit", W.reasons.map(r => [r.benefit, r.benefit]), rb.benefit, v => { benState.reasonBenefit = v; build(); })), c4,
+        el("div", { class: "tablewrap", style: "margin-top:10px" }, el("table", {}, el("thead", {}, el("tr", {}, ["Reason", "Overpaid", "Fraud", "Claimant error", "Official error"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
+          el("tbody", {}, rb.reasons.filter(x => x.total.est != null).map(x => el("tr", {}, el("td", { style: x.level ? "padding-left:22px;color:var(--ink2)" : x.reason === "Total" ? "font-weight:700" : "" }, x.reason),
+            el("td", { class: "n" }, bnM(x.total.est)), el("td", { class: "n" }, bnM(x.fraud.est)), el("td", { class: "n" }, bnM(x.claimant.est)), el("td", { class: "n" }, bnM(x.official.est)))))))));
+      draw(() => barChart(c4, { items: top.slice(0, 10).map(x => ({ label: x.reason, value: x.total.est })), fmt: mm, axisFmt: mm, table: false,
+        tipFmt: it => { const x = top.find(t => t.reason === it.label); return `${mm(x.total.est)} · fraud ${bnM(x.fraud.est)} · claimant error ${bnM(x.claimant.est)} · official error ${bnM(x.official.est)}`; } }));
+
+      // 5. coverage / how old is the evidence
+      const buckets = Object.entries(cov.buckets), colorB = { "within 12 months": "var(--s1)", "1 to 3 years ago": "var(--s3)", "more than 3 years ago": "var(--s4)", "never reviewed": "var(--s2)" };
+      const c5 = chartBox();
+      body.append(card("How recently each benefit was measured", `Benefit spending in ${all.total.at(-1).year} by when its fraud and error rate was last measured. DWP measures big benefits every year and rotates through the rest, so some published rates are carried forward from earlier years.`, c5));
+      draw(() => barChart(c5, { items: buckets.map(([k, v]) => ({ label: k[0].toUpperCase() + k.slice(1), value: v / 1000, color: colorB[k] })), fmt: bn, axisFmt: bn,
+        tipFmt: it => `${bn(it.value)} · ${pc(it.value * 1000 / cov.total_expenditure * 100)} of benefit spending` }));
+
+      // 6. net loss
+      const c6 = chartBox(), nv = k => Object.fromEntries(W.net[k].map(p => [p.year, p.est])), ny = W.net.gross.map(p => p.year);
+      body.append(card("What is recovered", "Money overpaid, money later recovered, and the net loss to the taxpayer, £ million. Recoveries include debts from earlier years.", c6));
+      draw(() => lineChart(c6, { x: ny, fmt: mm, axisFmt: mm, zero: true, height: 240, title: "Gross loss, recoveries and net loss",
+        series: [{ name: "Overpaid (gross loss)", values: ny.map(y => nv("gross")[y] ?? null) }, { name: "Recovered", values: ny.map(y => nv("recoveries")[y] ?? null), color: "var(--s3)" }, { name: "Net loss", values: ny.map(y => nv("net")[y] ?? null), color: "var(--s2)" }] }));
+
+      // 7. revisions
+      const rr = []; W.revisions.forEach(rv => Object.entries(rv.by_fye).filter(([y]) => y >= "2022-23").forEach(([y, v]) => {
+        const rels = W.releases.filter(r => v[r]); const first = v[rels[0]].est, lastv = v[rels.at(-1)].est;
+        rr.push(el("tr", {}, el("td", {}, `${rv.benefit}: ${rv.line.toLowerCase()}`), el("td", {}, y), ...W.releases.map(r => el("td", { class: "n" }, v[r] ? mm(v[r].est) : "–")),
+          el("td", { class: "n", style: lastv !== first ? "font-weight:700" : "" }, (lastv - first >= 0 ? "+" : "−") + mm(Math.abs(lastv - first)).replace("−", ""))));
+      }));
+      body.append(card("Are past estimates restated?", "The same year's figure as published in each DWP release. DWP rarely changes older years; the latest year is sometimes revised, here by small amounts and downwards.",
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Series", "Year", ...W.releases.map(r => `FYE ${r} release`), "Change"].map((h, i) => el("th", { class: i > 1 ? "n" : "" }, h)))), el("tbody", {}, rr)))));
+    }
+  };
+
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   VIEWS.compare = () => {
@@ -633,6 +731,7 @@
     const hf = D.hmrc.flags, hTiles = [["monthly_jump", "Unusual change in monthly tax receipts"], ["taxgap_revision", "Tax gap estimate later revised"]];
     hTiles.forEach(([k, t]) => tiles.append(tileBtn(t, hf.filter(f => f.type === k).length, "in HMRC statistics · jump to section ↓", () => jumpTo("hmrc-flags"))));
     tiles.append(tileBtn(D.ons.flag_types.ons_monthly_jump.title, D.ons.flags.length, "in ONS monthly series · jump to section ↓", () => jumpTo("ons-flags")));
+    tiles.append(tileBtn("Benefit fraud and error flags (DWP)", D.dwp.flags.length, "high rates, old measurements · jump to section ↓", () => jumpTo("dwp-flags")));
     root.append(tiles);
     const listWrap = el("div", { id: "flag-list" });
     root.append(listWrap);
@@ -649,7 +748,7 @@
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
     fl.id = "fn-flags";
     root.append(fl);
-    root.append(hmrcFlagsCard(), onsFlagsCard(), benfordCard(), opacityCard());
+    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), benfordCard(), opacityCard());
     return root;
 
     function rebuild() {
@@ -703,6 +802,15 @@
     return out;
   }
 
+  function dwpFlagsCard() {
+    const T = D.dwp.flag_types, fl = D.dwp.flags;
+    return el("section", { class: "card", id: "dwp-flags" }, el("h3", {}, "DWP: benefit fraud and error"),
+      el("p", { class: "sub" }, "Three screens on DWP's estimates: benefits with a high overpayment rate, benefits whose rate was last measured more than three years ago (or never), and past estimates that were later restated. See the Benefit fraud & error page for the charts."),
+      el("ul", { class: "tight small" }, Object.values(T).map(t => el("li", {}, el("b", {}, t.title + ": "), t.text))),
+      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Test", "Benefit", "Year", "What the data say"].map(h => el("th", {}, h)))),
+        el("tbody", {}, fl.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, T[f.type].title), el("td", {}, f.benefit), el("td", {}, f.year), el("td", {}, f.detail)))))));
+  }
+
   const oState = { sev: 2, limit: 15 };
   function onsFlagsCard() {
     const out = el("section", { class: "card", id: "ons-flags" });
@@ -754,7 +862,7 @@
     root.append(el("div", { class: "kpis" }, kpi("Pass", String(C.filter(c => c.status === "pass").length), "agree within rounding"), kpi("Discrepancy", String(C.filter(c => c.status === "warn").length), "outside rounding tolerance"), kpi("Documented gap", String(C.filter(c => c.status === "info").length), "explained in the source notes")));
     let lastSource = null;
     C.forEach(c => {
-      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
+      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
       const unit = /£bn/.test(c.title) ? "£bn" : /£m/.test(c.title) ? "£m" : "";
       const tol = c.tolerance > 1e9 ? 0 : c.tolerance;
       const head = el("tr", {}, ["Year", "Expected", "Table shows", "Gap"].map((h, i) => el("th", { class: i ? "n" : "" }, h)));
@@ -776,7 +884,7 @@
   VIEWS.method = () => {
     const P = D.flags.params, T = D.flags.types, T_ = D.hmrc.flag_types;
     const root = el("div", {}, el("h2", {}, "Method & sources"));
-    root.append(card("Sources (and only these)", "Every number comes from an official file: HM Treasury (Public Spending Statistics and PESA) and HMRC (tax receipts and tax gap statistics), both on GOV.UK, and the ONS Public Sector Finances dataset.",
+    root.append(card("Sources (and only these)", "Every number comes from an official file: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK, and the ONS Public Sector Finances dataset.",
       el("ul", { class: "tight" }, D.meta.collections.map(u => el("li", {}, el("a", { href: u, rel: "noopener" }, u)))),
       el("p", { class: "small" }, "Files used (all downloaded and processed by pipeline/build.py in the project, so anyone can reproduce the data):"),
       el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, "download")))))))));
@@ -784,7 +892,8 @@
       el("li", {}, el("b", {}, "Spending is annual. "), "The Treasury publishes financial-year outturn. Monthly figures come from the ONS (spending, receipts, borrowing, debt) and HMRC (tax receipts). ONS monthly figures are not seasonally adjusted and are revised; the latest months are provisional. ONS does not publish earlier versions of the dataset, so how much each month was later revised cannot be tested."),
       el("li", {}, el("b", {}, "Borrowing sign. "), "ONS publishes net borrowing as a negative number; the site shows borrowing as positive. The Treasury's totals are built on ONS data, so the two agree almost exactly in older years; that is not an independent test."),
       el("li", {}, el("b", {}, "Tax gap is an estimate. "), "HMRC builds it from sampling, models and assumptions; it is not a count of detected fraud, and recent years are routinely revised."),
-      el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud. The nearest thing to a fraud measure is HMRC's tax gap by behaviour (evasion, criminal attacks, error…). Benefit fraud and error rates (DWP) are not included."),
+      el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud. The nearest things to a fraud measure are HMRC's tax gap by behaviour (evasion, criminal attacks, error…) and DWP's estimates of fraud and error in benefits. Both are statistical estimates from samples, not counts of proven cases."),
+      el("li", {}, el("b", {}, "Benefit estimates are for Great Britain, "), "not the UK, and some benefits are measured only every few years, so part of the headline is carried forward from earlier measurements. DWP also reclassified some underpayments from 2022-23 and changed methods in places, which limits comparison across years."),
       el("li", {}, el("b", {}, "Coverage. "), "The line-by-line database covers departmental budgets only (DEL and departmental AME) and, by the Treasury's own note, excludes the Security and Intelligence Agencies and military operations costs. Long-run totals and function splits (Chapter 4) cover everything."),
       el("li", {}, el("b", {}, "Latest numbers can change. "), "Recent years are provisional and get restated; the revision tests show how much they have moved in the past."),
       el("li", {}, el("b", {}, "Real terms "), "uses the ratio of real to nominal Total Managed Expenditure in Table 4.1, i.e. the Treasury's own GDP-deflator adjustment."))));
@@ -802,6 +911,9 @@
         trow("Catch-all spending share", "Share of positive spending in “other”, “unallocated” and “provision” categories, which carry little information about what was bought.", `flag if ≥ ${P.opaque_share_flag * 100}% and rising ≥ ${P.opaque_rise_pp}pp`),
         trow(T_.monthly_jump.title, "Same method as the spending-line jump test, applied to each tax's receipts compared with the same month a year earlier (median/MAD score against that tax's own history). A shock is reported once; a rebound twelve months later is treated as a base effect.", "score ≥ 4; change ≥ £300m a month"),
         trow(D.ons.flag_types.ons_monthly_jump.title, "The HMRC monthly method applied to ONS spending, receipt and debt-interest series from 2015, scored against each series' history since 1997.", "score ≥ 4; change ≥ £300m a month"),
+        trow(D.dwp.flag_types.dwp_rate.title, "Benefits with at least £1bn of spending whose overpayment rate (fraud plus both kinds of error) is 3% or more; severity rises at 5% and 8%.", "≥ 3% of spending"),
+        trow(D.dwp.flag_types.dwp_stale.title, "Benefits with at least £1bn of spending whose fraud and error rate was last measured more than three years before the end of the period, plus spending that has never been reviewed.", "> 36 months; ≥ £1bn"),
+        trow(D.dwp.flag_types.dwp_revision.title, "The same year's DWP estimate is compared across the FYE 2024, 2025 and 2026 releases. A change is flagged when it is at least £100m and 1%, and more seriously when the new figure falls outside the earlier confidence interval.", "≥ £100m and ≥ 1%"),
         trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
         trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));
@@ -831,10 +943,10 @@
   }
 
   async function boot() {
-    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons"];
+    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons", "dwp"];
     try {
       const res = await Promise.all(names.map(loadJSON));
-      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons] = res;
+      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons, D.dwp] = res;
     } catch (e) {
       const hint = location.protocol === "file:"
         ? "You opened index.html directly from disk. Serve the folder instead, for example: python3 -m http.server -d site"
@@ -843,7 +955,7 @@
         el("button", { onclick: () => location.reload() }, "Try again")));
       return;
     }
-    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, and ONS public sector finances (${D.ons.release}). Processed ${D.meta.generated}.`;
+    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, DWP fraud and error statistics (${D.dwp.release.replace(/ \(.*/, "")}) and ONS public sector finances (${D.ons.release}). Processed ${D.meta.generated}.`;
     route();
   }
   boot();

@@ -6,6 +6,7 @@ A static website for exploring where UK public money goes, year by year, with au
 
 - HM Treasury: <https://www.gov.uk/government/collections/national-statistics-release> (Public Spending Statistics) and <https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa> (PESA)
 - HMRC: [tax receipts and NICs](https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk) (monthly from April 2017) and [Measuring tax gaps](https://www.gov.uk/government/collections/measuring-tax-gaps)
+- DWP: [Fraud and error in the benefit system](https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system) (annual estimates for Great Britain; the FYE 2024, 2025 and 2026 releases)
 - ONS: [Public sector finances](https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances) (monthly spending, receipts, borrowing and debt since April 1997)
 
 The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) and on the site's *Method & sources* page.
@@ -24,6 +25,7 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 | Tax gap (£bn and %) by tax, behaviour and customer group; revisions between editions | HMRC Measuring tax gaps tables |
 
 | Monthly spending, receipts, borrowing, debt interest, net debt | ONS Public sector finances (22 series, selected by CDID) |
+| Benefit fraud and error: overpaid and underpaid by benefit, by type and by reason, how recently each was measured, recoveries, restatements | DWP fraud and error data tables (3 releases) |
 | Agreement between ONS and Treasury totals | ONS monthly TME summed per financial year vs PESA Table 4.1 |
 
 **Monthly data:** the Treasury's tables are annual, so monthly figures come from the ONS (public finances) and HMRC (tax receipts). ONS figures are not seasonally adjusted, and the latest months are provisional. ONS publishes borrowing as a negative number; the site shows it as positive.
@@ -46,9 +48,14 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 12. Unusual months in HMRC tax receipts (year-on-year, scored per tax; a shock is reported once, not again as next year's rebound)
 13. Unusual months in ONS public finance series since 2015 (same method; net borrowing and net investment excluded because they cross zero)
 14. ONS identities (spending − receipts = borrowing; central government current + capital = total) and ONS vs Treasury annual totals
-15. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
+15. DWP benefit screens: high overpayment rates, benefits whose rate was last measured more than three years ago (or never), and estimates restated between releases; DWP internal checks (components, percentages, recoveries, benefits sum to the total, reasons sum to each benefit) and a scope comparison with the Treasury's benefit spending
+16. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
+
+## Not included yet
+
+**OBR forecasts vs outturn** (the Historical Official Forecasts Database). The OBR's download links redirect automated requests to a "No Access" page, so the pipeline cannot fetch it. If you download the spreadsheet yourself from <https://obr.uk/data/> and add it to the repo, a parser can be written against the real file.
 
 ## Colour scheme
 
