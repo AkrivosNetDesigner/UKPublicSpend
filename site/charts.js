@@ -69,11 +69,15 @@
 
   /* indexes of x labels to show: every `step`, plus the last one if it will not collide */
   function labelIdx(n, room, per) {
-    const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(room / per))));
-    const out = [];
-    for (let i = 0; i < n; i += step) out.push(i);
-    const last = out[out.length - 1];
-    if (last !== n - 1) { if (n - 1 - last >= step) out.push(n - 1); else out[out.length - 1] = n - 1; }
+    /* evenly spaced and always including the first and last point, so every gap between labels is the same */
+    if (n <= 2) return Array.from({ length: n }, (_, i) => i);
+    const stepPx = room / (n - 1), minStep = Math.max(1, Math.ceil(per / stepPx));
+    if (minStep >= n - 1) return [0, n - 1];
+    for (let st = minStep; st <= Math.min(n - 1, minStep * 2); st++) {          /* a whole number of points per gap that lands exactly on the last point */
+      if ((n - 1) % st === 0) return Array.from({ length: (n - 1) / st + 1 }, (_, j) => j * st);
+    }
+    const out = [];                                                                  /* otherwise equal gaps counted back from the latest point */
+    for (let i = n - 1; i >= 0; i -= minStep) out.unshift(i);
     return out;
   }
 
@@ -90,7 +94,7 @@
     el.replaceChildren();
     const series = o.series.map((s, i) => ({ color: SERIES[i % 8], ...s }));
     const { W, H } = sizeOf(el, o.height || 300);
-    const m = { l: 58, r: 14, t: 10, b: 26 };
+    const m = { l: 58, r: 34, t: 10, b: 26 };
     const all = series.flatMap(s => s.values).filter(v => v != null && isFinite(v));
     if (!all.length) { el.append(html("p", { class: "sub" }, "No data for this selection.")); return; }
     let lo = Math.min(...all), hi = Math.max(...all);
@@ -111,7 +115,7 @@
     });
     if (o.zero === false || lo < 0) { /* zero line already drawn via ticks */ }
     labelIdx(n, W - m.l - m.r, perLabel(o.x, 62)).forEach(i => {
-      const tx = svg("text", { x: X(i), y: H - 6, "text-anchor": i === 0 ? "start" : i === n - 1 ? "end" : "middle" }, s);
+      const tx = svg("text", { x: X(i), y: H - 6, "text-anchor": "middle" }, s);
       tx.textContent = o.x[i];
     });
     (o.bands || []).forEach(b => { /* highlighted x positions */
@@ -157,7 +161,7 @@
     el.replaceChildren();
     const series = o.series.map((s, i) => ({ color: s.name === "Other" ? OTHER : SERIES[i % 8], ...s }));
     const { W, H } = sizeOf(el, o.height || 320);
-    const m = { l: 58, r: 10, t: 10, b: 26 };
+    const m = { l: 58, r: 34, t: 10, b: 26 };
     const n = o.x.length;
     const pos = o.x.map((_, i) => series.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0));
     const neg = o.x.map((_, i) => series.reduce((a, s) => a + Math.min(0, s.values[i] || 0), 0));
@@ -173,8 +177,8 @@
       svg("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t), ...(t === 0 ? { class: "axis" } : {}) }, g);
       const tx = svg("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s); tx.textContent = o.axisFmt ? o.axisFmt(t) : o.fmt(t);
     });
-    labelIdx(n, W - m.l - m.r, perLabel(o.x, 56)).forEach(i => {
-      const tx = svg("text", { x: m.l + bw * i + bw / 2, y: H - 6, "text-anchor": i === n - 1 ? "end" : "middle" }, s);
+    labelIdx(n, (W - m.l - m.r) * (n - 1) / n, perLabel(o.x, 56)).forEach(i => {
+      const tx = svg("text", { x: m.l + bw * i + bw / 2, y: H - 6, "text-anchor": "middle" }, s);
       tx.textContent = o.x[i];
     });
     o.x.forEach((lab, i) => {
@@ -216,7 +220,13 @@
     const X = v => x0 + (v - lo) / ((hi - lo) || 1) * (W - m.r - x0);
     const s = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.title || "Bar chart" }, el);
     const g = svg("g", { class: "grid" }, s);
-    niceTicks(lo, hi, narrow ? 3 : 5).forEach(t => {
+    let tk = [];
+    for (let want = narrow ? 3 : 5; want >= 2; want--) {            /* fewest ticks that leave a gap between neighbouring labels */
+      tk = niceTicks(lo, hi, want).filter(t => t >= lo - 1e-9 && t <= hi + 1e-9);
+      const wid = Math.max(...tk.map(t => (o.axisFmt ? o.axisFmt(t) : o.fmt(t)).length)) * 6.6 + 14;
+      if (tk.length < 2 || (X(tk[1]) - X(tk[0])) >= wid) break;
+    }
+    tk.forEach(t => {
       if (t < lo - 1e-9 || t > hi + 1e-9) return;
       svg("line", { x1: X(t), x2: X(t), y1: m.t, y2: H - m.b, ...(t === 0 ? { class: "axis" } : {}) }, g);
       const tx = svg("text", { x: X(t), y: H - 6, "text-anchor": "middle" }, s); tx.textContent = o.axisFmt ? o.axisFmt(t) : o.fmt(t);
