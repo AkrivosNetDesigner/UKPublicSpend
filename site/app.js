@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["benefits", "Benefit fraud & error"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -655,6 +655,97 @@
     }
   };
 
+  /* ---------- Contracts (Contracts Finder award notices) */
+  const procState = { mode: "value", sort: "value", q: "", ftype: "", sev: 2, limit: 20, fq: "" };
+  const CLS = [["competitive", "Competitive"], ["framework", "Framework call-off"], ["direct", "Direct award / no competition"], ["unspecified", "Procedure not stated"], ["other", "Other"]];
+  const CLS_COLOR = { competitive: "var(--s1)", framework: "var(--s3)", direct: "var(--s2)", unspecified: "var(--s4)", other: "var(--other)" };
+  const gbp = v => { const a = Math.abs(v), s = v < 0 ? "−" : ""; return a >= 1e9 ? `${s}£${nf2.format(a / 1e9)}bn` : a >= 1e6 ? `${s}£${nf1.format(a / 1e6)}m` : `${s}£${nf0.format(a / 1e3)}k`; };
+  VIEWS.procurement = () => {
+    const P = D.proc, S = P.summary, q = S.quality, cls = S.by_class;
+    const share = k => (cls[k] ? cls[k].value / S.total_value * 100 : 0), shareN = k => (cls[k] ? cls[k].n / S.n * 100 : 0);
+    const root = el("div", {}, el("h2", {}, "Government contracts"),
+      el("p", { class: "lede" }, `Contracts that public bodies in England (and some UK-wide bodies) published as awarded on Contracts Finder, ${monLabel(S.months[0])} to ${monLabel(S.months.at(-1))}. A contract's value is its total over its lifetime, not a year's spending, and only contracts the buyer chose or had to publish appear here, so this is a window onto procurement and not the whole of it.`),
+      el("div", { class: "kpis" },
+        kpi("Awards published", nf0.format(S.n), `${monLabel(S.months[0])} – ${monLabel(S.months.at(-1))}`),
+        kpi("Total contract value", gbp(S.total_value), `median award ${gbp(S.median)}`),
+        kpi("Competitive", pc(share("competitive")), `of value · ${pc(shareN("competitive"))} of awards`),
+        kpi("Direct award", pc(share("direct")), `of value · ${pc(shareN("direct"))} of awards`),
+        kpi("Procedure not stated", pc(shareN("unspecified")), `of awards · ${nf0.format(q.unspecified_method)} notices`),
+        kpi("Flags raised", nf0.format(Object.values(P.flag_counts).reduce((a, b) => a + b, 0)), `${P.sev_counts["3"] || 0} high priority`)));
+    root.append(el("div", { class: "notice info" }, el("b", {}, "What this cannot show: "), `the number of bidders is not published in these notices, so “only one bid” cannot be tested. ${nf0.format(q.no_supplier_registration)} of ${nf0.format(q.awards)} awards (${pc(q.no_supplier_registration / q.awards * 100)}) name a supplier without a company number. To avoid singling out private individuals, suppliers are named only when they have a company or charity registration or an organisation-style name; ${nf0.format(q.not_named_as_organisation)} awards are counted but never named. Each flag below is a prompt to look closer, not a finding of wrongdoing.`));
+    const body = el("div", {});
+    root.append(body);
+    build();
+    return root;
+
+    function build() {
+      body.replaceChildren();
+      // 1. by month
+      const c1 = chartBox(), val = procState.mode === "value";
+      const series = CLS.map(([k, name]) => ({ name, color: CLS_COLOR[k], values: S.months.map(m => (val ? (S.by_month_value[m] || {})[k] : (S.by_month_n[m] || {})[k]) || 0) }));
+      body.append(card("Awards by month and how they were bought", "“Competitive” is an open or restricted procedure or competitive quotation; “framework” is a call-off from a pre-agreed list of suppliers; “direct award” includes single tender actions and waivers.",
+        el("div", { class: "controls" }, select("pmode", "Show", [["value", "Contract value"], ["count", "Number of awards"]], procState.mode, v => { procState.mode = v; build(); })), c1));
+      draw(() => stackedBars(c1, { x: S.months.map(monLabel), series, fmt: val ? gbp : nf0.format, axisFmt: val ? gbp : v => nf0.format(v), title: "Awards by procedure type" }));
+
+      // 2. sector
+      const c2 = chartBox();
+      body.append(card("What is being bought", "Largest sectors (the first two digits of the EU/UK Common Procurement Vocabulary code), by total contract value.", c2));
+      draw(() => barChart(c2, { items: S.cpv.slice(0, 14).map(c => ({ label: c.label || c.division, value: c.value })), fmt: gbp, axisFmt: gbp, tipFmt: it => { const c = S.cpv.find(x => (x.label || x.division) === it.label); return `${gbp(it.value)} · ${nf0.format(c.n)} awards`; } }));
+
+      // 3. buyers
+      const sorts = { value: b => b.value, direct: b => b.direct_value / b.value, unspec: b => b.unspec_n / b.n, late: b => b.late_n / b.n, conc: b => b.top_share };
+      const labels = { value: "Largest total value", direct: "Highest share of value awarded without competition", unspec: "Highest share not stating the procedure", late: "Most often published late", conc: "Most dependent on one supplier" };
+      let bs = P.buyers.filter(b => b.n >= (procState.sort === "value" ? 1 : 10) && (!procState.q || b.buyer.toLowerCase().includes(procState.q.toLowerCase())));
+      bs = bs.slice().sort((a, z) => sorts[procState.sort](z) - sorts[procState.sort](a)).slice(0, 25);
+      body.append(card("Buyers", "Buyers with at least 10 awards when ranking by a share. Shares are of this buyer's awards in the period.",
+        el("div", { class: "controls" }, select("psort", "Rank by", Object.entries(labels), procState.sort, v => { procState.sort = v; build(); }),
+          el("label", {}, "Find a buyer", el("input", { type: "search", id: "pq", value: procState.q, placeholder: "e.g. Council, NHS", oninput: e => { procState.q = e.target.value; clearTimeout(procState.t); procState.t = setTimeout(() => { const release = holdView(); build(); release(); }, 250); } }))),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Buyer", "Awards", "Value", "No competition", "Not stated", "Published late", "Biggest supplier"].map((h, i) => el("th", { class: i && i < 6 ? "n" : "" }, h)))),
+          el("tbody", {}, bs.map(b => el("tr", { class: "click", onclick: () => { procState.fq = b.buyer; procState.sev = 1; build(); jumpTo("proc-flags"); }, title: "Show this buyer's flags" },
+            el("td", {}, b.buyer), el("td", { class: "n" }, nf0.format(b.n)), el("td", { class: "n" }, gbp(b.value)), el("td", { class: "n" }, pc(b.direct_value / b.value * 100)),
+            el("td", { class: "n" }, pc(b.unspec_n / b.n * 100)), el("td", { class: "n" }, nf0.format(b.late_n)), el("td", {}, b.top_supplier ? `${b.top_supplier} (${nf0.format(b.top_share * 100)}%)` : "–"))))))));
+
+      // 4. suppliers
+      body.append(card("Largest suppliers", "Organisations only, by total contract value across buyers. Large totals usually reflect large framework or infrastructure contracts, not misconduct.",
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Supplier", "Awards", "Total value", "Different buyers"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
+          el("tbody", {}, S.top_suppliers.slice(0, 20).map(s => el("tr", {}, el("td", {}, s.name), el("td", { class: "n" }, nf0.format(s.n)), el("td", { class: "n" }, gbp(s.value)), el("td", { class: "n" }, nf0.format(s.buyers)))))))));
+
+      // 5. bunching
+      const bu = P.bunching, cb = chartBox();
+      const bHead = el("tr", {}, ["Value", "Just below", "Just above", "Ratio", "Score (z)", ""].map((h, i) => el("th", { class: i && i < 5 ? "n" : "" }, h)));
+      const bRows = bu.slice(0, 12).map(b => el("tr", {},
+        el("td", {}, gbp(b.threshold)), el("td", { class: "n" }, nf0.format(b.below)), el("td", { class: "n" }, nf0.format(b.above)),
+        el("td", { class: "n" }, b.ratio == null ? "–" : nf2.format(b.ratio)), el("td", { class: "n" }, nf1.format(b.z)),
+        el("td", {}, b.flag ? el("span", { class: "pill", style: "background:var(--yellow);color:#1B1B1B" }, "pile-up") : "")));
+      body.append(card("Do awards pile up just below round-number limits?",
+        "If buyers shape contracts to stay under a limit, there are more awards just below a round value than just above it. For each value, the chart compares awards in the 5% band just below with the 5% band just above. The score (z) measures how surprising the pile-up is; 3 or more is flagged. Round numbers are also popular for innocent reasons, so a high score is a prompt to look, not proof.",
+        cb, el("div", { class: "tablewrap", style: "margin-top:10px" }, el("table", {}, el("thead", {}, bHead), el("tbody", {}, bRows)))));
+      draw(() => barChart(cb, { items: bu.slice(0, 12).map(b => ({ label: gbp(b.threshold), value: b.z, color: b.flag ? "var(--s4)" : "var(--s1)" })), fmt: v => nf1.format(v), axisFmt: v => nf0.format(v), diverging: true, table: false, tipFmt: it => `score ${nf1.format(it.value)}` }));
+
+      // 6. flags
+      const types = Object.entries(P.types), fl = P.flags.filter(f => (!procState.ftype || f.type === procState.ftype) && f.sev >= procState.sev && (!procState.fq || (f.buyer || "").toLowerCase().includes(procState.fq.toLowerCase()) || (f.supplier || "").toLowerCase().includes(procState.fq.toLowerCase())));
+      const tiles = el("div", { class: "kpis" }, types.map(([k, t]) => el("button", { class: "kpi", "aria-pressed": String(procState.ftype === k), style: "text-align:left;cursor:pointer", onclick: () => { procState.ftype = procState.ftype === k ? "" : k; if (procState.ftype) procState.sev = 1; procState.limit = 20; build(); jumpTo("proc-flags"); } },
+        el("div", { class: "l" }, t.title), el("div", { class: "v" }, nf0.format(P.flag_counts[k] || 0)), el("div", { class: "d" }, "show list ↓"))));
+      body.append(tiles);
+      body.append(el("section", { class: "card", id: "proc-flags" }, el("h3", {}, `${nf0.format(fl.length)} flagged awards`),
+        el("p", { class: "sub" }, procState.ftype ? P.types[procState.ftype].text : "The largest and most serious are listed first. Only the top flags are kept on this page; the full tests are described under Method."),
+        el("div", { class: "controls" }, select("psev", "Minimum severity", [["3", "High only"], ["2", "Medium and above"], ["1", "Everything"]], String(procState.sev), v => { procState.sev = +v; procState.limit = 20; build(); }),
+          select("ptype", "Test", [["", "All tests"], ...types.map(([k, t]) => [k, t.title])], procState.ftype, v => { procState.ftype = v; procState.limit = 20; build(); }),
+          el("label", {}, "Buyer or supplier", el("input", { type: "search", id: "pfq", value: procState.fq, placeholder: "name contains…", oninput: e => { procState.fq = e.target.value; procState.limit = 20; clearTimeout(procState.t2); procState.t2 = setTimeout(() => { const release = holdView(); build(); release(); }, 250); } }))),
+        el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Test", "Buyer", "Supplier", "Value", "What the notice shows"].map((h, i) => el("th", { class: i === 4 ? "n" : "" }, h)))),
+          el("tbody", {}, fl.slice(0, procState.limit).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, P.types[f.type].title), el("td", {}, f.buyer), el("td", {}, f.supplier || "–"), el("td", { class: "n" }, f.value_fmt),
+            el("td", {}, f.detail, f.url ? [" ", el("a", { href: f.url, rel: "noopener", target: "_blank" }, "Official notice")] : null)))))),
+        fl.length > procState.limit ? el("p", {}, el("button", { onclick: () => { procState.limit += 30; build(); } }, `Show more (${fl.length - procState.limit} left)`)) : null));
+      // 7. data limits
+      body.append(card("What the data cannot tell us", null, el("ul", { class: "tight" },
+        el("li", {}, `${nf0.format(q.unspecified_method)} awards (${pc(q.unspecified_method / q.awards * 100)}) do not state the procedure used, so they cannot be classed as competitive or not.`),
+        el("li", {}, `${nf0.format(q.no_tender_estimate)} awards (${pc(q.no_tender_estimate / q.awards * 100)}) have no advertised estimate, so award-versus-estimate cannot be checked.`),
+        el("li", {}, `${nf0.format(q.zero_or_negative_value)} awards have a zero or negative value and ${nf0.format(q.bad_dates)} have contract end dates before their start dates. These are data-entry problems in the notices, not necessarily real contracts.`),
+        el("li", {}, `${Object.entries(q.excluded).map(([k, v]) => `${nf0.format(v)} notices excluded (${k})`).join("; ") || "No notices were excluded."}.`),
+        el("li", {}, "Contracts published only on Find a Tender (the above-threshold register) are not included in this version."))));
+    }
+  };
+
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   VIEWS.compare = () => {
@@ -732,6 +823,7 @@
     hTiles.forEach(([k, t]) => tiles.append(tileBtn(t, hf.filter(f => f.type === k).length, "in HMRC statistics · jump to section ↓", () => jumpTo("hmrc-flags"))));
     tiles.append(tileBtn(D.ons.flag_types.ons_monthly_jump.title, D.ons.flags.length, "in ONS monthly series · jump to section ↓", () => jumpTo("ons-flags")));
     tiles.append(tileBtn("Benefit fraud and error flags (DWP)", D.dwp.flags.length, "high rates, old measurements · jump to section ↓", () => jumpTo("dwp-flags")));
+    if (D.proc) tiles.append(tileBtn("Government contract flags (Contracts Finder)", Object.values(D.proc.flag_counts).reduce((a, b) => a + b, 0), "direct awards, late notices · jump to section ↓", () => jumpTo("proc-summary")));
     root.append(tiles);
     const listWrap = el("div", { id: "flag-list" });
     root.append(listWrap);
@@ -748,7 +840,7 @@
         el("tbody", {}, F.function_flags.slice(0, 15).map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, f.year), el("td", {}, f.detail)))))));
     fl.id = "fn-flags";
     root.append(fl);
-    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), benfordCard(), opacityCard());
+    root.append(hmrcFlagsCard(), onsFlagsCard(), dwpFlagsCard(), ...(D.proc ? [procFlagsCard()] : []), benfordCard(), opacityCard());
     return root;
 
     function rebuild() {
@@ -811,6 +903,15 @@
         el("tbody", {}, fl.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, T[f.type].title), el("td", {}, f.benefit), el("td", {}, f.year), el("td", {}, f.detail)))))));
   }
 
+  function procFlagsCard() {
+    const P = D.proc, top = P.flags.filter(f => f.sev === 3).slice(0, 12);
+    return el("section", { class: "card", id: "proc-summary" }, el("h3", {}, "Government contracts: the most serious flags"),
+      el("p", { class: "sub" }, "Screens on public award notices: large awards without competition, notices published long after the award, awards far from the advertised value, repeat awards to one supplier, and buyers that rarely say how they bought. They are prompts to look closer. The full list, with filters, is on the "),
+      el("p", {}, el("a", { href: "#/procurement" }, "Contracts page →")),
+      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Severity", "Test", "Buyer", "Value", "What the notice shows"].map((h, i) => el("th", { class: i === 3 ? "n" : "" }, h)))),
+        el("tbody", {}, top.map(f => el("tr", {}, el("td", {}, sevBadge(f.sev)), el("td", {}, P.types[f.type].title), el("td", {}, f.buyer), el("td", { class: "n" }, f.value_fmt), el("td", {}, f.detail)))))));
+  }
+
   const oState = { sev: 2, limit: 15 };
   function onsFlagsCard() {
     const out = el("section", { class: "card", id: "ons-flags" });
@@ -862,7 +963,7 @@
     root.append(el("div", { class: "kpis" }, kpi("Pass", String(C.filter(c => c.status === "pass").length), "agree within rounding"), kpi("Discrepancy", String(C.filter(c => c.status === "warn").length), "outside rounding tolerance"), kpi("Documented gap", String(C.filter(c => c.status === "info").length), "explained in the source notes")));
     let lastSource = null;
     C.forEach(c => {
-      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
+      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "Contracts Finder": "Government contracts (Contracts Finder)", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
       const unit = /£bn/.test(c.title) ? "£bn" : /£m/.test(c.title) ? "£m" : "";
       const tol = c.tolerance > 1e9 ? 0 : c.tolerance;
       const head = el("tr", {}, ["Year", "Expected", "Table shows", "Gap"].map((h, i) => el("th", { class: i ? "n" : "" }, h)));
@@ -884,15 +985,16 @@
   VIEWS.method = () => {
     const P = D.flags.params, T = D.flags.types, T_ = D.hmrc.flag_types;
     const root = el("div", {}, el("h2", {}, "Method & sources"));
-    root.append(card("Sources (and only these)", "Every number comes from an official file: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK, and the ONS Public Sector Finances dataset.",
+    root.append(card("Sources (and only these)", "Every number comes from an official source: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK; the ONS Public Sector Finances dataset; and the Cabinet Office's Contracts Finder (award notices).",
       el("ul", { class: "tight" }, D.meta.collections.map(u => el("li", {}, el("a", { href: u, rel: "noopener" }, u)))),
       el("p", { class: "small" }, "Files used (all downloaded and processed by pipeline/build.py in the project, so anyone can reproduce the data):"),
-      el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, "download")))))))));
+      el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, f.api ? "API" : "download")))))))));
     root.append(card("What the site can and cannot tell you", null, el("ul", { class: "tight" },
       el("li", {}, el("b", {}, "Spending is annual. "), "The Treasury publishes financial-year outturn. Monthly figures come from the ONS (spending, receipts, borrowing, debt) and HMRC (tax receipts). ONS monthly figures are not seasonally adjusted and are revised; the latest months are provisional. ONS does not publish earlier versions of the dataset, so how much each month was later revised cannot be tested."),
       el("li", {}, el("b", {}, "Borrowing sign. "), "ONS publishes net borrowing as a negative number; the site shows borrowing as positive. The Treasury's totals are built on ONS data, so the two agree almost exactly in older years; that is not an independent test."),
       el("li", {}, el("b", {}, "Tax gap is an estimate. "), "HMRC builds it from sampling, models and assumptions; it is not a count of detected fraud, and recent years are routinely revised."),
       el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud. The nearest things to a fraud measure are HMRC's tax gap by behaviour (evasion, criminal attacks, error…) and DWP's estimates of fraud and error in benefits. Both are statistical estimates from samples, not counts of proven cases."),
+      el("li", {}, el("b", {}, "Contracts are notices, not payments. "), "Contracts Finder holds award notices published by buyers. A contract's value is its lifetime value, many contracts never appear, and the notices do not state how many bidders there were, so \"single bidder\" cannot be tested. Suppliers are named only when they are recognisably organisations."),
       el("li", {}, el("b", {}, "Benefit estimates are for Great Britain, "), "not the UK, and some benefits are measured only every few years, so part of the headline is carried forward from earlier measurements. DWP also reclassified some underpayments from 2022-23 and changed methods in places, which limits comparison across years."),
       el("li", {}, el("b", {}, "Coverage. "), "The line-by-line database covers departmental budgets only (DEL and departmental AME) and, by the Treasury's own note, excludes the Security and Intelligence Agencies and military operations costs. Long-run totals and function splits (Chapter 4) cover everything."),
       el("li", {}, el("b", {}, "Latest numbers can change. "), "Recent years are provisional and get restated; the revision tests show how much they have moved in the past."),
@@ -914,6 +1016,16 @@
         trow(D.dwp.flag_types.dwp_rate.title, "Benefits with at least £1bn of spending whose overpayment rate (fraud plus both kinds of error) is 3% or more; severity rises at 5% and 8%.", "≥ 3% of spending"),
         trow(D.dwp.flag_types.dwp_stale.title, "Benefits with at least £1bn of spending whose fraud and error rate was last measured more than three years before the end of the period, plus spending that has never been reviewed.", "> 36 months; ≥ £1bn"),
         trow(D.dwp.flag_types.dwp_revision.title, "The same year's DWP estimate is compared across the FYE 2024, 2025 and 2026 releases. A change is flagged when it is at least £100m and 1%, and more seriously when the new figure falls outside the earlier confidence interval.", "≥ £100m and ≥ 1%"),
+        ...Object.entries(D.proc ? D.proc.types : {}).map(([k, t]) => trow(t.title, t.text + " " + ({
+          proc_direct: "Awards classed as direct award, single tender action, waiver or negotiation without publication, from £0.25m (severity rises at £1m and £5m).",
+          proc_late: "Award notice published at least 90 days after the award date, for awards of £0.1m or more.",
+          proc_estimate: "Award at least 2× the advertised estimate (or under a tenth of it), for contracts of £0.25m or more.",
+          proc_long: "Contract term over 10 years, for awards of £1m or more.",
+          proc_split: "Three or more non-framework awards to the same supplier by the same buyer within 90 days, together £0.15m or more.",
+          proc_conc: "A buyer with at least 20 awards and £5m of awards where one supplier received 40% or more of the value.",
+          proc_unspec: "A buyer with at least 20 awards where 40% or more do not state the procedure used.",
+        }[k] || ""), "see description")),
+        trow("Pile-up below round values", "For each round-number value, awards in the 5% band just below are compared with the 5% band just above (equal widths on a log scale); a binomial z-score of 3 or more with at least 30 awards below is flagged.", "z ≥ 3; ≥ 30 awards"),
         trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
         trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));
@@ -927,11 +1039,12 @@
 
   /* --------------------------------------------------------------- boot */
   /* Fetch one data file, retrying transient failures, and say exactly what went wrong if it still fails. */
-  async function loadJSON(name) {
+  async function loadJSON(name, optional = false) {
     let last;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const r = await fetch(`data/${name}.json`, { cache: "no-cache" });
+        if (r.status === 404 && optional) return null;     // an optional dataset that has not been built yet
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return await r.json();
       } catch (e) {
@@ -943,10 +1056,12 @@
   }
 
   async function boot() {
-    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons", "dwp"];
+    const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons", "dwp", "procurement"];
+    const OPTIONAL = new Set(["procurement"]);   // only requested when meta.json says it was built
     try {
-      const res = await Promise.all(names.map(loadJSON));
-      [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons, D.dwp] = res;
+      D.meta = await loadJSON("meta");
+      const res = await Promise.all(names.slice(1).map(n => (OPTIONAL.has(n) && !D.meta.has_procurement) ? null : loadJSON(n, OPTIONAL.has(n))));
+      [D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons, D.dwp, D.proc] = res;
     } catch (e) {
       const hint = location.protocol === "file:"
         ? "You opened index.html directly from disk. Serve the folder instead, for example: python3 -m http.server -d site"
@@ -955,6 +1070,7 @@
         el("button", { onclick: () => location.reload() }, "Try again")));
       return;
     }
+    if (!D.proc) { const i = ROUTES.findIndex(r => r[0] === "procurement"); if (i >= 0) ROUTES.splice(i, 1); }   // Contracts page only when its data exists
     document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, DWP fraud and error statistics (${D.dwp.release.replace(/ \(.*/, "")}) and ONS public sector finances (${D.ons.release}). Processed ${D.meta.generated}.`;
     route();
   }

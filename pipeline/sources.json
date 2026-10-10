@@ -1,12 +1,13 @@
 {
-  "_note": "Every file below is published on GOV.UK by HM Treasury, HMRC or DWP, or by the ONS (HMRC, ONS and DWP added at the user's request). The OBR was also requested but blocks automated downloads.",
+  "_note": "Every file below is published on GOV.UK by HM Treasury, HMRC or DWP, or by the ONS or the Cabinet Office (Contracts Finder). HMRC, ONS, DWP and Contracts Finder were added at the user's request. The OBR was also requested but blocks automated downloads.",
   "collections": [
     "https://www.gov.uk/government/collections/national-statistics-release",
     "https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa",
     "https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk",
     "https://www.gov.uk/government/collections/measuring-tax-gaps",
     "https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances",
-    "https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system"
+    "https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system",
+    "https://www.contractsfinder.service.gov.uk/"
   ],
   "release_page": "https://www.gov.uk/government/statistics/public-spending-statistics-release-july-2026",
   "files": {
@@ -81,6 +82,14 @@
       "publisher": "DWP",
       "title": "Fraud and error in the benefit system: financial year 2023 to 2024 estimates, data tables",
       "url": "https://assets.publishing.service.gov.uk/media/6645b7edae748c43d3793ca3/fraud-and-error-statistics-release-2023-2024-estimates-data-tables.xlsx"
+    }
+  },
+  "apis": {
+    "contracts_finder": {
+      "release": "Contracts Finder award notices (Apr to Sep 2026)",
+      "publisher": "Cabinet Office",
+      "title": "Contracts Finder OCDS API: award notices, downloaded by pipeline/fetch_contracts.py (organisation-level fields only; named contact people are discarded)",
+      "url": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search"
     }
   }
 }

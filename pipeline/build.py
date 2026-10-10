@@ -20,6 +20,7 @@ import analysis as A  # noqa: E402
 import hmrc as H  # noqa: E402
 import ons as O  # noqa: E402
 import dwp as W  # noqa: E402
+import procurement as PR  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -151,6 +152,22 @@ def main():
     checks += dchecks + [W.dwp_vs_treasury(dwp, t11, rec)]
     dump("dwp.json", {**dwp, "flags": dflags, "flag_types": {k: {"title": v[0], "text": v[1]} for k, v in W.DWP_FLAG_TEXT.items()}})
 
+    # ---- Contracts Finder award notices (downloaded separately by fetch_contracts.py)
+    cache = RAW / "cf_awards.jsonl"
+    if cache.exists():
+        recs = [json.loads(line) for line in cache.open()]
+        proc, pchecks = PR.build(recs)
+        checks += pchecks
+        proc["window"] = {"from": proc["summary"]["months"][0], "to": proc["summary"]["months"][-1]}
+        proc["_checks"] = pchecks
+        dump("procurement.json", proc)
+        print(f"procurement: {proc['summary']['n']} awards, {sum(proc['flag_counts'].values())} flags")
+    else:
+        print("procurement: no cache (run pipeline/fetch_contracts.py); keeping existing site/data/procurement.json")
+        existing = json.loads((OUT / "procurement.json").read_text()) if (OUT / "procurement.json").exists() else None
+        if existing:
+            checks += [dict(c, source="Contracts Finder") for c in existing.get("_checks", [])]
+
     # ---- ONS: monthly public sector finances
     ons = O.parse_pusf(paths["ons_pusf"])
     oflags = O.ons_flags(ons)
@@ -176,9 +193,9 @@ def main():
     t11y, t11l = t11
     dump("tme.json", {"years": t11y, "lines": t11l})
     dump("meta.json", {
-        "generated": datetime.date.today().isoformat(), "latest_release": "Public Spending Statistics, July 2026",
+        "generated": datetime.date.today().isoformat(), "has_procurement": (OUT / "procurement.json").exists(), "latest_release": "Public Spending Statistics, July 2026",
         "collections": src["collections"], "pending": src.get("pending", []), "release_page": src["release_page"],
-        "files": [{"key": k, **m} for k, m in src["files"].items()],
+        "files": [{"key": k, **m} for k, m in src["files"].items()] + [{"key": k, "api": True, **m} for k, m in src.get("apis", {}).items()],
         "db_years": years})
 
     print(f"segments: {len(segs)}  flags: {len(flags)}  by type: {dict(counts)}")

@@ -7,6 +7,7 @@ A static website for exploring where UK public money goes, year by year, with au
 - HM Treasury: <https://www.gov.uk/government/collections/national-statistics-release> (Public Spending Statistics) and <https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa> (PESA)
 - HMRC: [tax receipts and NICs](https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk) (monthly from April 2017) and [Measuring tax gaps](https://www.gov.uk/government/collections/measuring-tax-gaps)
 - DWP: [Fraud and error in the benefit system](https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system) (annual estimates for Great Britain; the FYE 2024, 2025 and 2026 releases)
+- Cabinet Office: [Contracts Finder](https://www.contractsfinder.service.gov.uk/) award notices, via its OCDS API (`pipeline/fetch_contracts.py`, polite and resumable; keeps organisation-level fields only and discards named contact people)
 - ONS: [Public sector finances](https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances) (monthly spending, receipts, borrowing and debt since April 1997)
 
 The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) and on the site's *Method & sources* page.
@@ -26,6 +27,7 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 
 | Monthly spending, receipts, borrowing, debt interest, net debt | ONS Public sector finances (22 series, selected by CDID) |
 | Benefit fraud and error: overpaid and underpaid by benefit, by type and by reason, how recently each was measured, recoveries, restatements | DWP fraud and error data tables (3 releases) |
+| Government contracts: awards by month, procedure, sector, buyer and supplier; red flags (direct awards, late notices, estimate gaps, repeat awards, concentration, pile-ups below round values) | Contracts Finder award notices (last 6 months by default) |
 | Agreement between ONS and Treasury totals | ONS monthly TME summed per financial year vs PESA Table 4.1 |
 
 **Monthly data:** the Treasury's tables are annual, so monthly figures come from the ONS (public finances) and HMRC (tax receipts). ONS figures are not seasonally adjusted, and the latest months are provisional. ONS publishes borrowing as a negative number; the site shows it as positive.
@@ -49,7 +51,8 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 13. Unusual months in ONS public finance series since 2015 (same method; net borrowing and net investment excluded because they cross zero)
 14. ONS identities (spending − receipts = borrowing; central government current + capital = total) and ONS vs Treasury annual totals
 15. DWP benefit screens: high overpayment rates, benefits whose rate was last measured more than three years ago (or never), and estimates restated between releases; DWP internal checks (components, percentages, recoveries, benefits sum to the total, reasons sum to each benefit) and a scope comparison with the Treasury's benefit spending
-16. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
+16. Contracts: large awards without competition, notices published long after the award, awards far from the advertised value, very long contracts, repeat awards to one supplier, buyers dominated by one supplier, buyers that rarely state their procedure, and pile-ups of awards just below round values
+17. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
 
@@ -65,6 +68,8 @@ The five brand colours (coral `#F78888`, yellow `#F3D250`, grey `#ECECEC`, sky `
 
 ```bash
 pip install openpyxl                      # only dependency
+python3 pipeline/fetch_contracts.py       # Contracts Finder award notices into ./raw: last 6 months by default, ~1 hour (the API allows ~12 requests per 5 minutes).
+                                          # Resumable; extend the window with e.g. --from 2025-10
 python3 pipeline/build.py                 # downloads the workbooks into ./raw and writes site/data/*.json
 python3 -m unittest discover -s pipeline/tests
 python3 -m http.server -d site 8000       # then open http://localhost:8000
