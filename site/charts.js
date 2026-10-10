@@ -97,6 +97,7 @@
     if (o.zero !== false && lo > 0) lo = 0;
     if (hi < 0) hi = 0;
     const ticks = niceTicks(lo, hi, 5);
+    m.l = Math.max(m.l, 14 + 6.6 * Math.max(...ticks.map(t => (o.axisFmt || o.fmt)(t).length)));
     lo = ticks[0]; hi = ticks[ticks.length - 1];
     const n = o.x.length;
     const X = i => m.l + (n === 1 ? 0.5 : i / (n - 1)) * (W - m.l - m.r);
@@ -161,6 +162,7 @@
     const pos = o.x.map((_, i) => series.reduce((a, s) => a + Math.max(0, s.values[i] || 0), 0));
     const neg = o.x.map((_, i) => series.reduce((a, s) => a + Math.min(0, s.values[i] || 0), 0));
     const ticks = niceTicks(Math.min(0, ...neg), Math.max(...pos), 5);
+    m.l = Math.max(m.l, 14 + 6.6 * Math.max(...ticks.map(t => (o.axisFmt || o.fmt)(t).length)));
     const lo = ticks[0], hi = ticks[ticks.length - 1];
     const Y = v => m.t + (1 - (v - lo) / (hi - lo)) * (H - m.t - m.b);
     const bw = (W - m.l - m.r) / n, w = Math.max(3, bw * 0.72);

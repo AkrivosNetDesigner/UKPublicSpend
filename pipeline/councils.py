@@ -124,6 +124,13 @@ def build(rows, pop, ons_lg_fy=None):
             c["missing"].append(r["year"])
     years = sorted({y for c in councils.values() for y in c["years"]})
     py = peer_year(rows)
+    # a council that filed in the previous year (or on both sides of a gap) but has no row at all this year has not submitted
+    for c in councils.values():
+        for i, y in enumerate(years):
+            if y in c["years"] or y in c["missing"] or i == 0 or years[i - 1] not in c["years"]:
+                continue
+            if y == py or (i + 1 < len(years) and years[i + 1] in c["years"]):
+                c["missing"].append(y)
     # ---- per-unit values for the peer year, and robust peer statistics per group and service
     metrics = defaultdict(dict)       # key -> code -> value (£ per unit)
     stats = {}

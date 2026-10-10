@@ -36,6 +36,13 @@ class Councils(unittest.TestCase):
         self.assertEqual(py, "2025-26")
         self.assertIn(("lc_missing", "Gone"), types)
 
+    def test_council_with_no_row_this_year_counts_as_not_submitted(self):
+        rows = [row(y, f"E06{i}", f"C{i}", "Unitary Authority", 1) for y in ("2023-24", "2024-25") for i in range(10)]
+        rows += [row("2024-25", f"E06{i}", f"C{i}", "Unitary Authority", 1) for i in range(0)]
+        rows = [r for r in rows if not (r["year"] == "2024-25" and r["code"] == "E069")]
+        cs, _, py, *_ = C.build(rows, {})
+        self.assertEqual(cs["E069"]["missing"], ["2024-25"])
+
     def test_checks_service_sum(self):
         rows = [row("2024-25", "E06A", "A", "Unitary Authority", 100, asc=60)]
         cks = C.checks(rows, {}, {})

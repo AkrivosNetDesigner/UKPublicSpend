@@ -864,24 +864,25 @@
     const val = (c, y, k) => { const v = c.y[y]; return v ? v[F[k]] : null; };
     const unit = (c, y, k) => { const v = val(c, y, k), d = c[denom[k] || "pop"]; return v == null || !d ? null : v * 1000 / d; };
     const eng = L.england, e1 = eng[ly], e0 = eng[L.years[L.years.length - 2]];
-    const nSub = L.councils.filter(c => c.y[py]).length;
+    const nSub = L.councils.filter(c => c.y[py]).length, nAll = L.councils.filter(c => c.y[py] || c.missing.includes(py)).length;
+    const axb = v => "£" + nf0.format(v / 1000) + "bn";
     const nFlag = L.flags.filter(f => f.sev === 3).length;
     const svcOrder = svcs.map(s => s.key).sort((a, b) => (e1[F[b]] || 0) - (e1[F[a]] || 0));
     const top = svcOrder[0];
     const out = [];
-    out.push(el("p", { class: "lede" }, `Figures are net current expenditure by service, from the Ministry of Housing, Communities and Local Government (MHCLG) revenue outturn returns, ${L.years[0]} to ${ly}. ${ly} is provisional and ${nSub} councils have submitted for ${py}. Spending is shown in ${ly} prices using the GDP deflator. Population is ONS ${L.population_year}.`));
+    out.push(el("p", { class: "lede" }, `Figures are net current expenditure by service, from the Ministry of Housing, Communities and Local Government (MHCLG) revenue outturn returns, ${L.years[0]} to ${ly}. ${ly} is provisional and ${nSub} of ${nAll} councils have submitted for ${py}. Spending is shown in ${ly} prices using the GDP deflator. Population is ONS ${L.population_year}.`));
     out.push(el("div", { class: "notice" }, el("b", {}, "A screening tool, not an accusation. "), "Councils differ in the people they serve (age, deprivation, rurality, London costs), in whether they run a service themselves or share it, and in accounting choices. A council far from its peers is a prompt to ask why. Only England is covered; Scotland, Wales and Northern Ireland publish on different systems."));
     out.push(el("div", { class: "kpis" },
       kpi("Council service spending", mm(real(e1[F.totsx], ly)), `${ly} · all English councils incl. police and fire`),
       kpi("Change in real terms", dpc((e1[F.totsx] * rf(ly) / (e0[F.totsx] * rf(L.years[L.years.length - 2])) - 1) * 100), `vs ${L.years[L.years.length - 2]}`),
       kpi("Largest service", label[top], `${mm(real(e1[F[top]], ly))} in ${ly}`),
-      kpi("Councils with returns", String(nSub), `for ${py}`),
+      kpi("Councils with returns", `${nSub} / ${nAll}`, `${nSub} of ${nAll} English councils have submitted for ${py}`),
       kpi("Schools deficits (DSG)", mm(-L.councils.reduce((a, c) => a + Math.min(0, val(c, py, "dsg") || 0), 0) / 1000), "held on councils' books, " + py),
       kpi("High-priority flags", String(nFlag), "councils to look at first")));
     // England by service over time
     const c1 = chartBox();
     out.push(card("Where English council spending goes", `Net service spending by service, £ million in ${ly} prices. Adult social care and children's services are the fastest-growing.`, c1));
-    draw(() => stackedBars(c1, { x: L.years, fmt: mm, axisFmt: mm, title: "English council spending by service",
+    draw(() => stackedBars(c1, { x: L.years, fmt: mm, axisFmt: axb, title: "English council spending by service",
       series: topPlusOther(svcOrder.map(k => ({ name: label[k], values: L.years.map(y => eng[y] ? real(eng[y][F[k]], y) : null) })), 6, L.years) }));
     // finder
     const prof = el("div", { id: "lc-profile" });
@@ -906,7 +907,7 @@
       prof.append(el("p", { class: "small" }, "Rates are £ per resident, except adult social care (per person aged 65+) and children's social care and education (per child aged 0-17). “Typical” is the median council of the same kind."));
       const ys = L.years.filter(y => c.y[y]);
       prof.append(el("h4", {}, "Total service spending over time (real terms)"), c2);
-      draw(() => lineChart(c2, { x: ys, fmt: mm, axisFmt: mm, zero: true, title: c.name + " service spending",
+      draw(() => lineChart(c2, { x: ys, fmt: mm, axisFmt: axb, zero: true, title: c.name + " service spending",
         series: [{ name: c.name, values: ys.map(y => real(val(c, y, "totsx"), y)) }] }));
       const res = val(c, yr, "reserves"), dsg = val(c, yr, "dsg"), nr = val(c, yr, "netrev");
       prof.append(el("div", { class: "kpis" }, kpi("Net revenue spending", mm((nr || 0) / 1000), yr), kpi("Usable reserves", mm((res || 0) / 1000), nr ? pc(res / nr * 100) + " of net spending" : ""),
