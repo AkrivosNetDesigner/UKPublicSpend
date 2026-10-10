@@ -64,9 +64,12 @@ All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) 
 
 **OBR forecasts vs outturn** (the Historical Official Forecasts Database). The OBR's download links redirect automated requests to a "No Access" page, so the pipeline cannot fetch it. If you download the spreadsheet yourself from <https://obr.uk/data/> and add it to the repo, a parser can be written against the real file.
 
-## Colour scheme
+## Design
 
-The five brand colours (coral `#F78888`, yellow `#F3D250`, grey `#ECECEC`, sky `#90CCF4`, blue `#5DA2D5`) are used as-is for large surfaces: the header band, KPI tiles, notices and highlights. Pastels are too light for thin chart lines and small text, so chart series use deeper steps of the same hues (plus violet, green, orange and magenta). That eight-colour set was checked with a colour-blind-separation and contrast validator in both light and dark mode, and all text pairings meet WCAG AA. Everything is defined as CSS variables at the top of `site/style.css`.
+- **Typeface:** [Inter](https://rsms.me/inter/) (variable weight, SIL Open Font License), self-hosted in `site/fonts/` so the site makes no third-party requests, with a system-font fallback. Numbers use tabular figures so columns line up.
+- **Colour:** deep navy chrome, cool neutral surfaces and one blue accent, in light and dark mode (follows your device, with a toggle in the top bar that is remembered in your browser). Chart series use an eight-hue palette (blue, amber, teal, violet, rose, orange, cyan, green) in an order checked for colour-blind separation and 3:1 contrast on the card surface; every text and background pairing meets WCAG AA.
+- **Layout:** a grouped sidebar on desktop that becomes a scrolling bar on small screens; summary tiles; cards for each chart or table, each with a "view as table" fallback.
+- Everything is defined as CSS variables at the top of `site/style.css`.
 
 ## Run it
 

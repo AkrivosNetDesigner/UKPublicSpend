@@ -56,9 +56,14 @@
   };
 
   /* ---------------------------------------------------------------- shell */
+  const NAV_GROUPS = [["", ["overview"]], ["Where money goes", ["functions", "departments", "regions", "compare"]],
+    ["Money in and debt", ["tax", "monthly", "borrowing"]], ["Integrity and scrutiny", ["benefits", "procurement", "flags", "checks"]], ["About", ["method"]]];
   function renderNav(active) {
-    const nav = document.getElementById("nav");
-    nav.replaceChildren(...ROUTES.map(([id, t]) => el("a", { href: `#/${id}`, ...(id === active ? { "aria-current": "page" } : {}) }, t)));
+    const nav = document.getElementById("nav"), label = Object.fromEntries(ROUTES);
+    nav.replaceChildren(...NAV_GROUPS.map(([title, ids]) => {
+      const links = ids.filter(id => label[id]).map(id => el("a", { href: `#/${id}`, ...(id === active ? { "aria-current": "page" } : {}) }, label[id]));
+      return links.length ? el("div", { class: "navgroup" }, title ? el("span", { class: "navlabel" }, title) : null, ...links) : null;
+    }).filter(Boolean));
   }
   function route() {
     const id = (location.hash.replace(/^#\//, "") || "overview").split("?")[0];
@@ -350,6 +355,7 @@
     return { fy: H.fys[i], recLast: tot[i], recYoy: (tot[i] / tot[i - 1] - 1) * 100, gap: gap.values.at(-1), gapPct: pct.values.at(-1),
       gapYear: H.taxgap.years.at(-1), high: H.flags.filter(f => f.sev === 3).length };
   }
+  const niceDate = iso => { const d = new Date(iso + "T00:00:00Z"); return `${d.getUTCDate()} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const monLabel = k => `${MON[+k.slice(5) - 1]} ${k.slice(0, 4)}`;
   const cleanTax = n => n.replace(/\s*\(included within[^)]*\)/, " (part of a larger tax)").replace("Total HMRC Receipts", "All taxes (total HMRC receipts)");
@@ -616,7 +622,7 @@
       const trs = W.benefits.filter(b => b.total.est != null && (b.expenditure || b.name === "Interdependencies")).map(b => el("tr", { class: "click", onclick: () => { benState.reasonBenefit = W.reasons.find(r => r.benefit === b.name) ? b.name : benState.reasonBenefit; build(); jumpTo("reasoncard"); }, title: "Show the reasons" },
         el("td", {}, b.name), el("td", { class: "n" }, b.expenditure ? bn(b.expenditure / 1000) : "–"), el("td", { class: "n" }, mm(b.total.est)), el("td", { class: "n" }, b.pct.est == null ? "–" : pc(b.pct.est)),
         el("td", { class: "n" }, bnM(b.fraud.est)), el("td", { class: "n" }, b.total.lo == null ? "–" : `${mm(b.total.lo)} – ${mm(b.total.hi)}`),
-        el("td", {}, b.months_since > 36 || b.months_since == null ? el("span", { class: "pill", style: "background:var(--yellow);color:#1B1B1B" }, ago(b)) : ago(b))));
+        el("td", {}, b.months_since > 36 || b.months_since == null ? el("span", { class: "pill warn" }, ago(b)) : ago(b))));
       body.append(card("Every benefit", "Benefits that have closed (Income Support, Incapacity Benefit) have no current spending and are left out.", el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Benefit", "Spending", "Overpaid", "Rate", "Of which fraud", "Range", "Last measured"].map((h, i) => el("th", { class: i && i < 6 ? "n" : "" }, h)))), el("tbody", {}, trs)))));
 
       // 4. reasons
@@ -716,7 +722,7 @@
       const bRows = bu.slice(0, 12).map(b => el("tr", {},
         el("td", {}, gbp(b.threshold)), el("td", { class: "n" }, nf0.format(b.below)), el("td", { class: "n" }, nf0.format(b.above)),
         el("td", { class: "n" }, b.ratio == null ? "–" : nf2.format(b.ratio)), el("td", { class: "n" }, nf1.format(b.z)),
-        el("td", {}, b.flag ? el("span", { class: "pill", style: "background:var(--yellow);color:#1B1B1B" }, "pile-up") : "")));
+        el("td", {}, b.flag ? el("span", { class: "pill warn" }, "pile-up") : "")));
       body.append(card("Do awards pile up just below round-number limits?",
         "If buyers shape contracts to stay under a limit, there are more awards just below a round value than just above it. For each value, the chart compares awards in the 5% band just below with the 5% band just above. The score (z) measures how surprising the pile-up is; 3 or more is flagged. Round numbers are also popular for innocent reasons, so a high score is a prompt to look, not proof.",
         cb, el("div", { class: "tablewrap", style: "margin-top:10px" }, el("table", {}, el("thead", {}, bHead), el("tbody", {}, bRows)))));
@@ -763,7 +769,7 @@
         kpi("Net debt", `£${nf2.format(S.KSE6.values[li] / 1e6)}tn`, `end of ${monLabel(months[li])} · ${nf0.format(gdp)}% of GDP in ${gdpYear}`),
         kpi(`Interest on debt, ${int.year}`, bn(int.interest / 1000), `${nf1.format(int.share)}p of every £1 of receipts`),
         kpi(`Yield on new gilts, ${iss.years[ii]}`, pc(iss.avg_yield[ii]), `average on ${bn(iss.gross_bn[ii])} issued`),
-        kpi("10-year gilt yield", pc(Y.latest.IUDMNPY), `${Y.latest.date} · ${pc(Y.monthly.IUDMNPY[ym - 12])} a year earlier`)));
+        kpi("10-year gilt yield", pc(Y.latest.IUDMNPY), `${niceDate(Y.latest.date)} · ${pc(Y.monthly.IUDMNPY[ym - 12])} a year earlier`)));
     const body = el("div", {});
     root.append(body);
     build();
@@ -1138,6 +1144,20 @@
     function trow(a, b, c) { return el("tr", {}, el("td", { style: "min-width:150px;font-weight:600" }, a), el("td", {}, b), el("td", { style: "min-width:150px" }, c)); }
   };
 
+  /* ------------------------------------------------------------ theme */
+  (function theme() {
+    const btn = document.getElementById("themebtn"), lab = document.getElementById("themelabel"), modes = ["auto", "light", "dark"];
+    let mode = "auto";
+    try { mode = modes.includes(localStorage.getItem("theme")) ? localStorage.getItem("theme") : "auto"; } catch (e) { /* storage blocked: stay on auto */ }
+    const apply = () => {
+      if (mode === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", mode);
+      lab.textContent = { auto: "Auto", light: "Light", dark: "Dark" }[mode];
+      btn.setAttribute("aria-label", `Colour theme: ${mode === "auto" ? "automatic (follows your device)" : mode}. Press to change.`);
+    };
+    btn.addEventListener("click", () => { mode = modes[(modes.indexOf(mode) + 1) % 3]; try { localStorage.setItem("theme", mode); } catch (e) { /* ignore */ } apply(); draws.forEach(f => f()); });
+    apply();
+  })();
+
   /* --------------------------------------------------------------- boot */
   /* Fetch one data file, retrying transient failures, and say exactly what went wrong if it still fails. */
   async function loadJSON(name, optional = false) {
@@ -1172,7 +1192,7 @@
       return;
     }
     if (!D.proc) { const i = ROUTES.findIndex(r => r[0] === "procurement"); if (i >= 0) ROUTES.splice(i, 1); }   // Contracts page only when its data exists
-    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, DWP fraud and error statistics (${D.dwp.release.replace(/ \(.*/, "")}) and ONS public sector finances (${D.ons.release}). Processed ${D.meta.generated}.`;
+    document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, DWP fraud and error statistics (${D.dwp.release.replace(/ \(.*/, "")}), ONS public sector finances (${D.ons.release}), and Debt Management Office and Bank of England gilt data. Processed ${D.meta.generated}.`;
     route();
   }
   boot();

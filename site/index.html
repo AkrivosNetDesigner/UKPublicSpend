@@ -3,28 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#ECECEC">
+<meta name="theme-color" content="#0B2545">
 <title>UK Public Spend Explorer</title>
-<meta name="description" content="Explore where UK public money goes and where tax comes from, year by year and month by month, using HM Treasury, HMRC and ONS statistics. Includes automatic checks for unusual figures.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%231c5cab%27/%3E%3Crect x=%277%27 y=%2716%27 width=%276%27 height=%279%27 fill=%27white%27/%3E%3Crect x=%2713%27 y=%2711%27 width=%276%27 height=%2714%27 fill=%27white%27/%3E%3Crect x=%2719%27 y=%277%27 width=%276%27 height=%2718%27 fill=%27white%27/%3E%3C/svg%3E">
+<meta name="description" content="Explore where UK public money goes, where tax comes from, how borrowing builds into debt, and where the numbers look unusual, using HM Treasury, HMRC, DWP, ONS, Debt Management Office and Bank of England statistics.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230B2545%27/%3E%3Crect x=%277%27 y=%2717%27 width=%275%27 height=%278%27 rx=%271%27 fill=%27%2360A5FA%27/%3E%3Crect x=%2714%27 y=%2711%27 width=%275%27 height=%2714%27 rx=%271%27 fill=%27%232DD4BF%27/%3E%3Crect x=%2721%27 y=%277%27 width=%275%27 height=%2718%27 rx=%271%27 fill=%27white%27/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
-  <div class="wrap">
-    <div class="brand">
-      <h1>UK Public Spend Explorer</h1>
-      <p>Where the money goes, and where the numbers look odd. Sourced from HM Treasury (<abbr title="Public Expenditure Statistical Analyses">PESA</abbr> and Public Spending Statistics), HMRC, DWP and the ONS.</p>
-    </div>
-    <nav id="nav" aria-label="Sections"></nav>
+  <div class="top-in">
+    <a class="brandlink" href="#/overview" aria-label="UK Public Spend Explorer: home">
+      <span class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="10" width="4" height="8" rx="1" fill="#fff" opacity=".7"/><rect x="8" y="6" width="4" height="12" rx="1" fill="#fff" opacity=".85"/><rect x="14" y="2" width="4" height="16" rx="1" fill="#fff"/></svg></span>
+      <span class="brandtext"><b>UK Public Spend Explorer</b><small>Where the money goes, and where the numbers look odd</small></span>
+    </a>
+    <span class="spacer"></span>
+    <button id="themebtn" class="themebtn" type="button" aria-label="Colour theme: automatic. Press to change.">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg><span id="themelabel">Auto</span>
+    </button>
   </div>
 </header>
-<main id="main" class="wrap" tabindex="-1"><p class="loading">Loading data…</p></main>
-<footer class="wrap foot">
-  <p id="foot-meta"></p>
-  <p>Unofficial, independent visualisation. Every figure is taken from official files published by HM Treasury, HMRC, DWP and the ONS; see <a href="#/method">Method &amp; sources</a>. A flagged figure means “worth a closer look”, never “fraud”.</p>
-</footer>
+<div class="layout">
+  <nav id="nav" class="side" aria-label="Sections"></nav>
+  <div class="content">
+    <main id="main" tabindex="-1"><p class="loading">Loading data…</p></main>
+    <footer class="foot">
+      <p id="foot-meta"></p>
+      <p>Unofficial, independent visualisation. Every figure is taken from official files published by HM Treasury, HMRC, DWP, the ONS, the Cabinet Office, the Debt Management Office and the Bank of England; see <a href="#/method">Method &amp; sources</a>. A flagged figure means “worth a closer look”, never “fraud”.</p>
+    </footer>
+  </div>
+</div>
 <div id="tip" class="tip" role="status" hidden></div>
 <script src="charts.js"></script>
 <script src="app.js"></script>
