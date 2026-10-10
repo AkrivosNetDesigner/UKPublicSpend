@@ -24,6 +24,7 @@ import procurement as PR  # noqa: E402
 import borrowing as B  # noqa: E402
 import councils as L  # noqa: E402
 import outcomes as OC  # noqa: E402
+import national as NT  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -264,6 +265,9 @@ def main():
                   fresh(RAW / "waste_la.ods", lsrc["defra_waste"]["url"], 24 * 30), fresh(RAW / "rdc0120.ods", lsrc["dft_road_condition"]["url"], 24 * 30),
                   fresh(RAW / "rdl0202.ods", lsrc["dft_road_length"]["url"], 24 * 30), fresh(RAW / "imd_lower.xlsx", lsrc["imd_lower"]["url"], 24 * 90),
                   fresh(RAW / "imd_upper.xlsx", lsrc["imd_upper"]["url"], 24 * 90), {k: {"name": v["name"], "group": v["group"], "cls": v["cls"]} for k, v in lc.items()})
+    edu = next(r for r in functions["real"] if r["label"] == "9. Education")
+    ees = lambda k: NT.rows_from_csv_bytes(fresh(RAW / f"{k}.csv.gz", lsrc[k]["url"], 24 * 7).read_bytes())
+    oc["national"] = {"schools": NT.build(ees("ees_ks2"), ees("ees_ks4"), ees("ees_pupils"), functions["years"][:len(edu["values"])], edu["values"])}
     dump("outcomes.json", oc)
     dump("checks.json", {"checks": checks})      # written last, once every source has contributed its checks
 

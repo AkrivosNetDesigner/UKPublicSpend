@@ -87,6 +87,24 @@
     }
   },
   "apis": {
+    "ees_ks2": {
+      "release": "Key stage 2 attainment (to 2025-26 provisional)",
+      "publisher": "Department for Education",
+      "title": "Key stage 2 attainment: attainment by pupil characteristics (national, % meeting the expected standard in reading, writing and maths)",
+      "url": "https://api.education.gov.uk/statistics/v1/data-sets/c62e9901-58a5-ba76-aa0d-5ee4ef269776/csv"
+    },
+    "ees_ks4": {
+      "release": "Key stage 4 performance 2024-25",
+      "publisher": "Department for Education",
+      "title": "Key stage 4 performance: national characteristics by school types (Attainment 8, English and maths grade 5 or above)",
+      "url": "https://api.education.gov.uk/statistics/v1/data-sets/18e39901-7fe3-8372-8b2b-33f7ae1e1d12/csv"
+    },
+    "ees_pupils": {
+      "release": "Schools, pupils and their characteristics (January 2026)",
+      "publisher": "Department for Education",
+      "title": "Number of pupils by free school meal eligibility (state-funded schools in England, January census)",
+      "url": "https://api.education.gov.uk/statistics/v1/data-sets/019e7404-df19-71ce-90a8-f2e3db7dd7fa/csv"
+    },
     "mhclg_capital": {
       "release": "Capital expenditure and receipts time series 2018-19 to 2024-25",
       "publisher": "Ministry of Housing, Communities and Local Government",

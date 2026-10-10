@@ -861,9 +861,10 @@
     const pairs = O.pairings;
     const body = el("div", { id: "buys-body" });
     out.push(card("Choose a pairing", null, el("div", { class: "controls" },
-      select("bp", "Service and result", pairs.map((p, i) => [String(i), p.title + " · " + p.service]), String(bState.p), v => { bState.p = +v; bState.g = 0; bState.hl = ""; paint(); }))));
+      select("bp", "Service and result", [...pairs.map((p, i) => [String(i), p.title + " · " + p.service + " (council by council)"]), ["schools", "Schools · Education (national, over time)"]], String(bState.p), v => { bState.p = v === "schools" ? v : +v; bState.g = 0; bState.hl = ""; paint(); }))));
     out.push(body);
     function paint() {
+      if (bState.p === "schools") return paintSchools();
       const P = pairs[bState.p], G = P.groups[Math.min(bState.g, P.groups.length - 1)], S = G.stats;
       const fx = P.id === "waste" ? v => "£" + nf0.format(v) : v => "£" + nf1.format(v) + "k";
       const fy = G.unit === "%" ? v => nf1.format(v) + "%" : v => nf0.format(v) + " " + G.unit;
@@ -896,8 +897,40 @@
       draw(() => Charts.scatter(c1, { points: pts, xfmt: fx, yfmt: fy, xAxis: P.id === "waste" ? fx : v => "£" + nf0.format(v) + "k", yAxis: G.unit === "%" ? v => nf0.format(v) + "%" : v => nf0.format(v),
         xlabel: P.id === "waste" ? "Spending, £ per resident" : "Road maintenance, £ thousand per km a year", ylabel: G.outcome_label.replace(" (3-year average)", "") + (G.unit === "%" ? " (%)" : " (" + G.unit + ")"), trend: true, title: P.title + " scatter chart" }));
     }
+    function paintSchools() {
+      const S = O.national.schools, ys = S.years, last = ys[ys.length - 1], y0 = ys[0];
+      const at = (ser, y) => ser[y];
+      const pctCh = ser => (ser[last] / ser[y0] - 1) * 100;
+      const lastWith = ser => [...ys].reverse().find(y => ser[y] != null);
+      const em = S.ks4_em95, k2 = S.ks2_rwm;
+      const sentence = (name, ser, y1, y2) => ser[y1] != null && ser[y2] != null ? `${name} went from ${nf1.format(ser[y1])}% in ${y1} to ${nf1.format(ser[y2])}% in ${y2}.` : "";
+      const lk4 = lastWith(em), lk2 = lastWith(k2);
+      const c1 = chartBox(), c2 = chartBox(), c3 = chartBox();
+      const bands = S.teacher_graded.concat(S.generous_grading).map(x => ({ x }));
+      body.replaceChildren(
+        card("Schools: spending and results over time", "England's school results beside what the country spends on education, in real terms, since 2016-17. No correlation is calculated: with ten yearly points, exam rules that changed and pandemic years graded differently, a statistic would mislead.",
+          el("div", { class: "kpis" },
+            kpi("Spending per pupil", "£" + nf0.format(S.per_pupil[last]), `${last} · ${dpc(pctCh(S.per_pupil))} since ${y0} (real terms)`),
+            kpi("Pupils eligible for free school meals", pc(S.fsm_pct[last]), `${last} · ${pc(S.fsm_pct[y0])} in ${y0}: more pupils with greater need`),
+            kpi("Key stage 2: reading, writing, maths", pc(k2[lk2]), `expected standard, ${lk2} · ${pc(k2["2018-19"])} in 2018-19, before the pandemic`),
+            kpi("GCSE English and maths grade 5+", pc(em[lk4]), `${lk4} · ${pc(em["2018-19"])} in 2018-19`))),
+        card("Spending per pupil", "UK Treasury spending on education at every level, in 2025-26 prices, per state-funded school pupil in England.", c1),
+        card("Results", "Shaded years: grades set by teachers (2019-20, 2020-21) or deliberately generous (2021-22). Key stage 2 tests were not held in 2019-20 or 2020-21, so those points are blank.", c2),
+        card("Need", "Share of pupils taking free school meals on the January census, a common indicator of disadvantage. Eligibility rules widened in 2018 to 2023 (Universal Credit protections), so part of the rise is a change in who qualifies.", c3),
+        card("What the figures show", null, el("ul", { class: "tight" },
+          el("li", {}, `Real spending per pupil is ${dpc(pctCh(S.per_pupil))} between ${y0} and ${last}; the number of pupils rose until 2023-24 and is now falling.`),
+          el("li", {}, sentence("Key stage 2 reading, writing and maths", k2, "2018-19", lk2)),
+          el("li", {}, sentence("GCSE English and maths grade 5 or above", em, "2018-19", lk4)),
+          el("li", {}, "Key stage 2 results are still below their 2018-19 level, while GCSE English and maths results are above it. They are not comparable like for like: GCSE grading in 2019-22 was set by teachers or deliberately protected pupils, and exam boards have been returning to pre-pandemic standards since. Learning lost in the pandemic, more pupils with greater need, absence and teaching changes could all play a part; the data here cannot separate them.")),
+          el("ul", { class: "tight" }, ...S.notes.map(n => el("li", {}, n))),
+          el("p", { class: "small" }, "Sources: HM Treasury Public Spending Statistics (Table 4.3, Education); Department for Education: Key stage 2 attainment, Key stage 4 performance, Schools, pupils and their characteristics (via the DfE explore education statistics API).")));
+      draw(() => lineChart(c1, { x: ys, fmt: v => "£" + nf0.format(v), axisFmt: v => "£" + nf0.format(v), zero: false, title: "Real spending per pupil", series: [{ name: "Education spending per pupil (real)", values: ys.map(y => S.per_pupil[y]) }] }));
+      draw(() => lineChart(c2, { x: ys, fmt: v => nf1.format(v) + "%", axisFmt: v => nf0.format(v) + "%", zero: false, title: "School results", bands,
+        series: [{ name: "Key stage 2: reading, writing and maths at expected standard", values: ys.map(y => k2[y]) }, { name: "GCSE: English and maths grade 5 or above", values: ys.map(y => em[y]) }] }));
+      draw(() => lineChart(c3, { x: ys, fmt: v => nf1.format(v) + "%", axisFmt: v => nf0.format(v) + "%", zero: true, title: "Free school meals", series: [{ name: "Pupils taking free school meals", values: ys.map(y => S.fsm_pct[y]) }] }));
+    }
     paint();
-    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned pairings: planning decisions and housing (homelessness), children's social care and Ofsted, public health and life expectancy, and national links such as NHS waiting lists and school attainment. Each needs its own careful choice of measure and need adjustment before it is shown.")));
+    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned: planning decisions and housing (homelessness), children's social care and Ofsted, public health and life expectancy. NHS waiting lists are not yet included: NHS England's website blocks automated downloads, so the waiting-list file cannot be fetched by the data pipeline.")));
     return out;
   }
 
