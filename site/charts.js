@@ -253,5 +253,51 @@
     return s;
   }
 
-  window.Charts = { lineChart, stackedBars, barChart, spark, html, svg, SERIES, OTHER, hideTip };
+  /* ---------------------------------------------------------- scatter */
+  function scatter(el, o) {
+    el.replaceChildren();
+    const pts = o.points.filter(p => p.x != null && p.y != null && isFinite(p.x) && isFinite(p.y));
+    if (!pts.length) { el.append(html("p", { class: "sub" }, "No data for this selection.")); return; }
+    const { W, H } = sizeOf(el, o.height || 360);
+    const m = { l: 58, r: 16, t: 12, b: 46 };
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const xt = niceTicks(Math.min(0, ...xs), Math.max(...xs), 5), yt = niceTicks(Math.min(0, ...ys), Math.max(...ys), 5);
+    m.l = Math.max(m.l, 14 + 6.6 * Math.max(...yt.map(t => (o.yAxis || o.yfmt)(t).length)));
+    const x0 = xt[0], x1 = xt[xt.length - 1], y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = v => m.l + (v - x0) / ((x1 - x0) || 1) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / ((y1 - y0) || 1)) * (H - m.t - m.b);
+    const s = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.title || "Scatter chart" }, el);
+    const g = svg("g", { class: "grid" }, s);
+    yt.forEach(t => { svg("line", { x1: m.l, x2: W - m.r, y1: Y(t), y2: Y(t) }, g); const tx = svg("text", { x: m.l - 8, y: Y(t) + 4, "text-anchor": "end" }, s); tx.textContent = (o.yAxis || o.yfmt)(t); });
+    xt.forEach(t => { svg("line", { x1: X(t), x2: X(t), y1: m.t, y2: H - m.b }, g); const tx = svg("text", { x: X(t), y: H - m.b + 16, "text-anchor": "middle" }, s); tx.textContent = (o.xAxis || o.xfmt)(t); });
+    const lx = svg("text", { x: (m.l + W - m.r) / 2, y: H - 6, "text-anchor": "middle", class: "lbl" }, s); lx.textContent = o.xlabel || "";
+    const ly = svg("text", { x: 12, y: (m.t + H - m.b) / 2, "text-anchor": "middle", class: "lbl", transform: `rotate(-90 12 ${(m.t + H - m.b) / 2})` }, s); { const mx = Math.floor((H - m.t - m.b) / 6.4), t = o.ylabel || ""; ly.textContent = t.length > mx ? t.slice(0, mx - 1) + "…" : t; }
+    if (o.trend && pts.length > 5) {            /* least-squares line, a guide to the eye only */
+      const n = pts.length, mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+      const sxx = xs.reduce((a, v) => a + (v - mx) ** 2, 0), b = sxx ? xs.reduce((a, v, i) => a + (v - mx) * (ys[i] - my), 0) / sxx : 0;
+      const ya = my + b * (x0 - mx), yb = my + b * (x1 - mx);
+      svg("line", { x1: X(x0), y1: Y(Math.max(y0, Math.min(y1, ya))), x2: X(x1), y2: Y(Math.max(y0, Math.min(y1, yb))), stroke: "var(--ink2)", "stroke-width": 1.5, "stroke-dasharray": "6 4", opacity: .7 }, s);
+    }
+    const dots = pts.map(p => svg("circle", { cx: X(p.x), cy: Y(p.y), r: p.hl ? 5.5 : 4, fill: p.color || "var(--accent)", "fill-opacity": p.hl ? 1 : .55, stroke: p.hl ? "var(--ink)" : "var(--surface)", "stroke-width": p.hl ? 1.5 : 1 }, s));
+    const ring = svg("circle", { r: 8, fill: "none", stroke: "var(--ink)", "stroke-width": 2, opacity: 0 }, s);
+    const hit = svg("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, s);
+    const move = ev => {
+      const r = s.getBoundingClientRect(), px = (ev.clientX - r.left) * (W / r.width), py = (ev.clientY - r.top) * (H / r.height);
+      let best = -1, bd = 1e9;
+      pts.forEach((p, i) => { const d = (X(p.x) - px) ** 2 + (Y(p.y) - py) ** 2; if (d < bd) { bd = d; best = i; } });
+      if (best < 0 || bd > 28 * 28) { hideTip(); ring.setAttribute("opacity", 0); return; }
+      const p = pts[best];
+      ring.setAttribute("cx", X(p.x)); ring.setAttribute("cy", Y(p.y)); ring.setAttribute("opacity", 1);
+      showTip(ev, html("div", {}, html("b", {}, p.label), html("div", { class: "r" }, html("span", {}, o.xlabel || "x"), html("span", { class: "mono" }, o.xfmt(p.x))),
+        html("div", { class: "r" }, html("span", {}, o.ylabel || "y"), html("span", { class: "mono" }, o.yfmt(p.y))), ...(p.extra ? [html("div", { class: "sub" }, p.extra)] : [])));
+    };
+    hit.addEventListener("mousemove", move);
+    hit.addEventListener("touchstart", e => move(e.touches[0]), { passive: true });
+    hit.addEventListener("mouseleave", () => { hideTip(); ring.setAttribute("opacity", 0); });
+    const d = html("details", { class: "tbl" }, html("summary", {}, "View as table"));
+    d.append(html("div", { class: "tablewrap" }, html("table", {}, html("thead", {}, html("tr", {}, html("th", {}, "Council"), html("th", { class: "n" }, o.xlabel || "x"), html("th", { class: "n" }, o.ylabel || "y"))),
+      html("tbody", {}, pts.slice().sort((a, b) => a.label.localeCompare(b.label)).map(p => html("tr", {}, html("td", {}, p.label), html("td", { class: "n" }, o.xfmt(p.x)), html("td", { class: "n" }, o.yfmt(p.y))))))));
+    el.append(d);
+  }
+
+  window.Charts = { scatter, lineChart, stackedBars, barChart, spark, html, svg, SERIES, OTHER, hideTip };
 })();

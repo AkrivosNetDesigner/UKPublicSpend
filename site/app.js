@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["councils", "Local councils"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["councils", "Local councils"], ["buys", "What it buys"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -56,7 +56,7 @@
   };
 
   /* ---------------------------------------------------------------- shell */
-  const NAV_GROUPS = [["", ["overview"]], ["Where money goes", ["functions", "departments", "regions", "councils", "compare"]],
+  const NAV_GROUPS = [["", ["overview"]], ["Where money goes", ["functions", "departments", "regions", "councils", "buys", "compare"]],
     ["Money in and debt", ["tax", "monthly", "borrowing"]], ["Integrity and scrutiny", ["benefits", "procurement", "flags", "checks"]], ["About", ["method"]]];
   function renderNav(active) {
     const nav = document.getElementById("nav"), label = Object.fromEntries(ROUTES);
@@ -843,6 +843,64 @@
     }
   };
 
+  /* ---------- What it buys: council spending paired with results */
+  const bState = { p: 0, g: 0, hl: "" };
+  VIEWS.buys = () => {
+    const root = el("div", {}, el("h2", {}, "What it buys"),
+      el("p", { class: "lede" }, "Knowing what a council spends is only half the story. This page sets spending beside something measurable that the spending is meant to affect, council by council, and asks whether councils that spend more get more."),
+      el("p", { class: "sub" }, "Loading…"));
+    loadJSON("outcomes").then(d => { D.oc = d; if (!main.contains(root)) return; root.lastChild.remove(); root.append(...buysBody()); }, e => root.append(el("div", { class: "notice" }, "Could not load: " + e.message)));
+    return root;
+  };
+  function buysBody() {
+    const O = D.oc, out = [];
+    const strength = r => { const a = Math.abs(r); return a < 0.1 ? "no real" : a < 0.3 ? "a weak" : a < 0.5 ? "a moderate" : "a strong"; };
+    const dirWord = (r, better) => r > 0 ? (better > 0 ? "better" : "worse") : (better > 0 ? "worse" : "better");
+    out.push(el("div", { class: "notice" }, el("b", {}, "Association is not cause. "),
+      "A pattern between spending and results can reflect many things the data cannot see: how a service is organised, the type of area, past investment, how results are measured. A council that spends a lot and gets poor results is a good place to ask questions, not proof that money is wasted; a council that spends little and does well may be doing something others could learn from, or may be storing up problems. Councils are only compared with councils that do the same job."));
+    const pairs = O.pairings;
+    const body = el("div", { id: "buys-body" });
+    out.push(card("Choose a pairing", null, el("div", { class: "controls" },
+      select("bp", "Service and result", pairs.map((p, i) => [String(i), p.title + " · " + p.service]), String(bState.p), v => { bState.p = +v; bState.g = 0; bState.hl = ""; paint(); }))));
+    out.push(body);
+    function paint() {
+      const P = pairs[bState.p], G = P.groups[Math.min(bState.g, P.groups.length - 1)], S = G.stats;
+      const fx = P.id === "waste" ? v => "£" + nf0.format(v) : v => "£" + nf1.format(v) + "k";
+      const fy = G.unit === "%" ? v => nf1.format(v) + "%" : v => nf0.format(v) + " " + G.unit;
+      const dsort = G.points.map(p => p.d).sort((a, b) => a - b), t1 = dsort[Math.floor(dsort.length / 3)], t2 = dsort[Math.floor(dsort.length * 2 / 3)];
+      const col = d => d <= t1 ? SERIES[0] : d <= t2 ? SERIES[1] : SERIES[4];
+      const pts = G.points.map(p => ({ x: p.x, y: p.y, label: p.n, color: col(p.d), hl: p.c === bState.hl, extra: "Deprivation score " + nf1.format(p.d) + " (higher = more deprived)" }));
+      const ctl = S.controls.length > 1 ? `deprivation and ${S.controls.slice(1).join(" and ")}` : "deprivation";
+      const sig = ci => ci && (ci[0] > 0 || ci[1] < 0);
+      const rawLine = `Across ${S.n} councils of this kind, ${sig(S.rho_ci) ? strength(S.rho) + " pattern: councils that spend more per " + (P.id === "waste" ? "resident" : "km of road") + " tend to have " + dirWord(S.rho, G.better) + " results" : "no clear pattern between spending and results"} (rank correlation ${S.rho > 0 ? "+" : "−"}${nf2.format(Math.abs(S.rho))}${S.rho_ci ? `, 95% range ${nf2.format(S.rho_ci[0])} to ${nf2.format(S.rho_ci[1])}` : ""}).`;
+      const adjLine = `After allowing for ${ctl}: ${sig(S.rho_adj_ci) ? strength(S.rho_adj) + " pattern remains" : "the pattern is no longer distinguishable from none"} (${S.rho_adj > 0 ? "+" : "−"}${nf2.format(Math.abs(S.rho_adj))}${S.rho_adj_ci ? `, 95% range ${nf2.format(S.rho_adj_ci[0])} to ${nf2.format(S.rho_adj_ci[1])}` : ""}).`;
+      const needLine = `More deprived areas ${S.outcome_vs_imd * (G.better) < -0.1 ? "have worse" : S.outcome_vs_imd * (G.better) > 0.1 ? "have better" : "have about the same"} results on this measure (${S.outcome_vs_imd > 0 ? "+" : "−"}${nf2.format(Math.abs(S.outcome_vs_imd))}) and ${S.spend_vs_imd > 0.1 ? "spend more" : S.spend_vs_imd < -0.1 ? "spend less" : "spend about the same"} (${S.spend_vs_imd > 0 ? "+" : "−"}${nf2.format(Math.abs(S.spend_vs_imd))}).`;
+      const c1 = chartBox();
+      const hlSel = select("bhl", "Find a council", [["", "None"], ...G.points.slice().sort((a, b) => a.n.localeCompare(b.n)).map(p => [p.c, p.n])], bState.hl, v => { bState.hl = v; paint(); });
+      const grp = P.groups.length > 1 ? select("bg", "Councils and result", P.groups.map((g, i) => [String(i), g.label + " · " + g.outcome_label]), String(bState.g), v => { bState.g = +v; bState.hl = ""; paint(); }) : null;
+      const legend = el("p", { class: "small" }, el("span", { style: `color:${SERIES[0]}` }, "● "), "Least deprived third  ", el("span", { style: `color:${SERIES[1]}` }, "● "), "Middle third  ", el("span", { style: `color:${SERIES[4]}` }, "● "), "Most deprived third. Dashed line: straight-line fit, as a guide.");
+      const hl = G.points.find(p => p.c === bState.hl);
+      const list = (title, sub, rows) => el("div", {}, el("h4", {}, title), el("p", { class: "sub" }, sub), rows.length ? el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Council", "Spending", "Result"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
+        el("tbody", {}, rows.map(r => el("tr", { class: "click", onclick: () => { lcState.code = r.code; location.hash = "#/councils"; } }, el("td", {}, r.name), el("td", { class: "n" }, fx(r.x)), el("td", { class: "n" }, fy(r.y))))))) : el("p", { class: "small" }, "None stand out clearly."));
+      body.replaceChildren(card(P.title + ": " + G.outcome_label, G.label, ...(grp ? [el("div", { class: "controls" }, grp)] : []),
+        el("ul", { class: "tight" }, el("li", {}, rawLine), el("li", {}, adjLine), el("li", {}, needLine)),
+        el("div", { class: "controls" }, hlSel), hl ? el("p", {}, el("b", {}, hl.n), `: spending ${fx(hl.x)}, result ${fy(hl.y)}. Median for councils of this kind: spending ${fx(S.median_x)}, result ${fy(S.median_y)}.`) : null,
+        legend, c1,
+        el("p", { class: "small" }, `${S.n} of ${G.eligible} councils of this kind are shown; the rest lack spending, population, deprivation or result data for the period.`)),
+        card("Where spending and results part ways", `Councils whose spending and results are furthest apart once need (${ctl}) is allowed for. These are the places to ask questions; click a council to see its spending profile.`,
+          el("div", { class: "grid g2" }, list("Spending more than need suggests, results poorer than expected", "Possible questions: what is the money paying for? Is the service organised differently?", S.high_spend_poor),
+            list("Spending less than need suggests, results better than expected", "Possible questions: is this efficient, or are costs being pushed elsewhere (to the county, to later years)?", S.low_spend_good))),
+        card("How to read this pairing", P.spend_label + ".", el("ul", { class: "tight" }, ...P.notes.map(n => el("li", {}, n)),
+          el("li", {}, "Correlations here are Spearman rank correlations: 0 means no pattern, +1 or −1 means councils line up perfectly. Allowing for need uses the English Indices of Deprivation 2025 (average score for the area)" + (S.controls.length > 1 ? " and " + S.controls.slice(1).join(", ") : "") + " by removing their linear effect on the ranks first. The 95% range shows how much a pattern of this size could be down to chance with this many councils.")),
+          el("p", { class: "small" }, "Sources: " + O.sources.map(s => s.publisher + ", " + s.title).join("; ") + ".")));
+      draw(() => Charts.scatter(c1, { points: pts, xfmt: fx, yfmt: fy, xAxis: P.id === "waste" ? fx : v => "£" + nf0.format(v) + "k", yAxis: G.unit === "%" ? v => nf0.format(v) + "%" : v => nf0.format(v),
+        xlabel: P.id === "waste" ? "Spending, £ per resident" : "Road maintenance, £ thousand per km a year", ylabel: G.outcome_label.replace(" (3-year average)", "") + (G.unit === "%" ? " (%)" : " (" + G.unit + ")"), trend: true, title: P.title + " scatter chart" }));
+    }
+    paint();
+    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned pairings: planning decisions and housing (homelessness), children's social care and Ofsted, public health and life expectancy, and national links such as NHS waiting lists and school attainment. Each needs its own careful choice of measure and need adjustment before it is shown.")));
+    return out;
+  }
+
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   /* ---------- Local councils (England) */
@@ -851,7 +909,7 @@
     const root = el("div", {}, el("h2", {}, "Local councils in England"),
       el("p", { class: "lede" }, "Councils spend around a fifth of all public money on social care, children's services, roads, waste, housing and more. This page uses each council's own return to the government (revenue outturn) with ONS population estimates to compare councils that do the same job."),
       el("p", { class: "sub" }, "Loading council data…"));
-    loadJSON("councils").then(d => { D.lc = d; if (!main.contains(root)) return; root.replaceChildren(...lcBody()); }, e => root.append(el("div", { class: "notice" }, "Could not load council data: " + e.message)));
+    loadJSON("councils").then(d => { D.lc = d; if (!main.contains(root)) return; root.lastChild.remove(); root.append(...lcBody()); }, e => root.append(el("div", { class: "notice" }, "Could not load council data: " + e.message)));
     return root;
   };
   function lcBody() {
@@ -1265,6 +1323,7 @@
           "lc_interest|Net interest paid at least 10% of net revenue spending.|≥ 10% (rises at 15% and 25%)",
           "lc_invest|Commercial investment properties whose carrying cost exceeds their income by £1m or more.|≥ £1m",
           "lc_missing|No revenue outturn return for a recent year when at least 90% of councils submitted.|2021-22 onward"].map(x => { const [k, h, t] = x.split("|"); return trow((D.lc ? D.lc.flag_types[k].title : ({ lc_outlier: "Council spend far from similar councils", lc_jump: "Council: sudden change in spending", lc_reserves: "Council: thin reserves", lc_dsg: "Council: schools funding deficit", lc_interest: "Council: heavy debt-servicing cost", lc_invest: "Council: investment properties costing more than they earn", lc_missing: "Council: accounts not submitted" })[k]), h, t); }),
+        trow("What it buys: spending against results", "Council spending lines are joined by ONS area code to a result from another department (Defra waste, DfT road condition). Councils are compared only with similar councils; Spearman rank correlation is reported with a 95% range, then repeated after removing the linear effect of deprivation (IoD2025 average score), and for roads also people per km of road. Councils far from the pattern once need is allowed for are listed.", "≥ 12 councils; outliers beyond 0.5 standard deviations on both"),
         trow(T_.taxgap_revision.title, "HMRC re-estimates earlier years in each annual edition. The first estimate for each year is compared with the latest.", "revision ≥ 1.0 percentage point"),
         trow("Table cross-checks", "Recomputes totals (functions → services → TME, regions → nations → UK; HMRC's taxes → total receipts, tax gap components → total) and compares the same total across tables and real-vs-cash deflators.", "rounding tolerance of the table"),
       )))));
