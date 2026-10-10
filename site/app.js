@@ -775,13 +775,33 @@
   };
 
   /* --------------------------------------------------------------- boot */
+  /* Fetch one data file, retrying transient failures, and say exactly what went wrong if it still fails. */
+  async function loadJSON(name) {
+    let last;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await fetch(`data/${name}.json`, { cache: "no-cache" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.json();
+      } catch (e) {
+        last = e;
+        await new Promise(res => setTimeout(res, 400 * (attempt + 1)));
+      }
+    }
+    throw new Error(`data/${name}.json: ${last && last.message ? last.message : last}`);
+  }
+
   async function boot() {
     const names = ["meta", "aggregates", "functions", "regions", "departments", "segments", "flags", "checks", "hmrc", "ons"];
     try {
-      const res = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => { if (!r.ok) throw new Error(n); return r.json(); })));
+      const res = await Promise.all(names.map(loadJSON));
       [D.meta, D.agg, D.fn, D.reg, D.dept, D.segments, D.flags, D.checks, D.hmrc, D.ons] = res;
     } catch (e) {
-      main.replaceChildren(el("div", { class: "notice" }, "Could not load the data files. If you opened index.html directly from disk, serve the folder instead (for example: python3 -m http.server -d site)."));
+      const hint = location.protocol === "file:"
+        ? "You opened index.html directly from disk. Serve the folder instead, for example: python3 -m http.server -d site"
+        : "This is usually a temporary network problem, an ad or content blocker, or a stale cached copy. Try again, or hard-refresh (Ctrl+Shift+R).";
+      main.replaceChildren(el("div", { class: "notice" }, el("b", {}, "Could not load the data. "), `Failed on ${e.message}. `, hint, " ",
+        el("button", { onclick: () => location.reload() }, "Try again")));
       return;
     }
     document.getElementById("foot-meta").textContent = `Data: HM Treasury ${D.meta.latest_release} (plus July 2024 and 2025 releases for revision checks), HMRC receipts and tax gap statistics, and ONS public sector finances (${D.ons.release}). Processed ${D.meta.generated}.`;
