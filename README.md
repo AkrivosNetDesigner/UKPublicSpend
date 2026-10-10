@@ -27,7 +27,7 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 
 | Monthly spending, receipts, borrowing, debt interest, net debt | ONS Public sector finances (22 series, selected by CDID) |
 | Benefit fraud and error: overpaid and underpaid by benefit, by type and by reason, how recently each was measured, recoveries, restatements | DWP fraud and error data tables (3 releases) |
-| Government contracts: awards by month, procedure, sector, buyer and supplier; red flags (direct awards, late notices, estimate gaps, repeat awards, concentration, pile-ups below round values) | Contracts Finder award notices (last 6 months by default) |
+| Government contracts: awards by month, procedure, sector, buyer and supplier; red flags (direct awards, late notices, estimate gaps, repeat awards, concentration, pile-ups below round values) | Contracts Finder award notices (last 60 days by default, extendable) |
 | Agreement between ONS and Treasury totals | ONS monthly TME summed per financial year vs PESA Table 4.1 |
 
 **Monthly data:** the Treasury's tables are annual, so monthly figures come from the ONS (public finances) and HMRC (tax receipts). ONS figures are not seasonally adjusted, and the latest months are provisional. ONS publishes borrowing as a negative number; the site shows it as positive.
@@ -68,8 +68,9 @@ The five brand colours (coral `#F78888`, yellow `#F3D250`, grey `#ECECEC`, sky `
 
 ```bash
 pip install openpyxl                      # only dependency
-python3 pipeline/fetch_contracts.py       # Contracts Finder award notices into ./raw: last 6 months by default, ~1 hour (the API allows ~12 requests per 5 minutes).
-                                          # Resumable; extend the window with e.g. --from 2025-10
+python3 pipeline/fetch_contracts.py       # Contracts Finder award notices into ./raw, one day at a time: the last 60 days by default (about 45 minutes,
+                                          # the API allows ~12 requests per 5 minutes). Incremental: later runs fetch only days not yet seen.
+                                          # Extend further back with e.g. --from 2026-04-01 (roughly 15 minutes per month of history)
 python3 pipeline/build.py                 # downloads the workbooks into ./raw and writes site/data/*.json
 python3 -m unittest discover -s pipeline/tests
 python3 -m http.server -d site 8000       # then open http://localhost:8000

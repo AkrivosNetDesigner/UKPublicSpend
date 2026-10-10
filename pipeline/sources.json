@@ -86,7 +86,7 @@
   },
   "apis": {
     "contracts_finder": {
-      "release": "Contracts Finder award notices (Apr to Sep 2026)",
+      "release": "Contracts Finder award notices (recent days; see window on the Contracts page)",
       "publisher": "Cabinet Office",
       "title": "Contracts Finder OCDS API: award notices, downloaded by pipeline/fetch_contracts.py (organisation-level fields only; named contact people are discarded)",
       "url": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search"

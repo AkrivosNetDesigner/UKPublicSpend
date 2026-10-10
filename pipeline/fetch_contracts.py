@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Download award notices from Contracts Finder (OCDS API) into a compact JSONL cache.
+"""Download award notices from Contracts Finder (OCDS API) into a compact JSONL cache, one day at a time.
 
-    python3 pipeline/fetch_contracts.py [--from 2024-10] [--to 2026-09]
+    python3 pipeline/fetch_contracts.py                  # the last 60 days (new days only on later runs)
+    python3 pipeline/fetch_contracts.py --from 2026-04-01   # extend further back
 
-Polite and resumable: one request at a time, a pause between requests, backs off on HTTP 429, and skips months
-already in the cache. Only organisation-level fields are kept. Named contact people (name, email, phone) that
-appear in the notices are deliberately dropped and never stored.
+Why one day at a time: the API treats `publishedTo` as exclusive and caps how many results a single query returns, so
+whole-month queries silently lose data. A day is a small, complete unit. A day is recorded as done only once it is in the
+past, so re-running fetches just the days not yet seen (and today again, which is still filling up). That makes it
+incremental: run it whenever you like and it only asks for what is new.
+
+Polite and resumable: one request at a time at the pace the API allows (about 12 per 5 minutes), backing off on HTTP
+429/403. Only organisation-level fields are kept. Named contact people (name, email, phone) in the notices are dropped.
 """
 import argparse
-import calendar
 import json
 import os
 import ssl
@@ -16,19 +20,20 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "raw" / "cf_awards.jsonl"
-DONE = ROOT / "raw" / "cf_months_done.txt"
+DONE = ROOT / "raw" / "cf_days_done.txt"
 BASE = "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search"
 UA = "UKPublicSpend/1.0 (public-interest spending explorer; reads public award notices)"
 PAUSE = 26.0         # the API allows about 12 requests per 5 minutes; this keeps just under it (adaptive on a 429)
-STATE = ROOT / "raw" / "cf_state.json"
+SPLIT_AT_PAGES = 10  # a day this big may hit the result cap: refetch it in smaller windows
 
 
 class Pace:
-    """Adaptive politeness: the API's rate limit is stricter than its documentation suggests."""
+    """Adaptive politeness: slow down after a rate-limit response, ease back after a run of successes."""
     delay, ok = PAUSE, 0
 
     @classmethod
@@ -39,7 +44,7 @@ class Pace:
 
     @classmethod
     def limited(cls):
-        cls.delay, cls.ok = min(30.0, cls.delay * 1.6), 0
+        cls.delay, cls.ok = min(60.0, cls.delay * 1.5), 0
 
 
 def get(url, tries=8):
@@ -51,8 +56,8 @@ def get(url, tries=8):
                 Pace.success()
                 return data
         except urllib.error.HTTPError as e:
-            if e.code in (429, 503):
-                wait = int(e.headers.get("Retry-After", 0) or 0) or 120
+            if e.code in (403, 429, 503):
+                wait = int(e.headers.get("Retry-After", 0) or 0) or 300 if e.code == 403 else int(e.headers.get("Retry-After", 0) or 0) or 120
                 Pace.limited()
                 print(f"  HTTP {e.code}; waiting {wait}s, then pacing at {Pace.delay:.0f}s per request", flush=True)
                 time.sleep(wait)
@@ -94,48 +99,72 @@ def compact(rel):
     return out
 
 
-def month_range(a, b):
-    y, m = map(int, a.split("-"))
-    ye, me = map(int, b.split("-"))
-    while (y, m) <= (ye, me):
-        yield f"{y}-{m:02d}"
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+def plan(first, today, done):
+    """Days to fetch, newest first. A past day is done once fetched; today is always refetched (it is still filling up)."""
+    days, d = [], today
+    while d >= first:
+        if d == today or d.isoformat() not in done:
+            days.append(d)
+        d -= timedelta(days=1)
+    return days
+
+
+def windows(day, parts=1):
+    """(publishedFrom, publishedTo) pairs covering `day`; the end of the range is exclusive."""
+    start = datetime(day.year, day.month, day.day)
+    step = timedelta(hours=24 // parts)
+    f = "%Y-%m-%dT%H:%M:%S"
+    return [((start + i * step).strftime(f), (start + (i + 1) * step).strftime(f)) for i in range(parts)]
+
+
+def fetch_window(a, b):
+    """All pages for one window -> (releases_seen, award_records, pages)."""
+    url = f"{BASE}?publishedFrom={a}&publishedTo={b}&limit=100&stages=award"
+    n, recs, pages = 0, [], 0
+    while url:
+        d = get(url)
+        for rel in d.get("releases", []):
+            recs += compact(rel)
+        n += len(d.get("releases", []))
+        pages += 1
+        url = (d.get("links") or {}).get("next")
+        if url:
+            time.sleep(Pace.delay)
+    return n, recs, pages
+
+
+def fetch_day(day):
+    n, recs, pages = fetch_window(*windows(day)[0])
+    if pages >= SPLIT_AT_PAGES:      # possibly truncated by the API's result cap: redo in 6-hour windows
+        print(f"  {day}: {pages} pages, refetching in 6-hour windows to be safe", flush=True)
+        n, recs, pages = 0, [], 0
+        for a, b in windows(day, 4):
+            time.sleep(Pace.delay)
+            n2, r2, p2 = fetch_window(a, b)
+            n, recs, pages = n + n2, recs + r2, pages + p2
+    return n, recs, pages
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--from", dest="a", default="2026-04")
-    ap.add_argument("--to", dest="b", default="2026-09")
+    ap.add_argument("--from", dest="a", default=(date.today() - timedelta(days=60)).isoformat(), help="first day to fetch (default: 60 days ago)")
     args = ap.parse_args()
     CACHE.parent.mkdir(exist_ok=True)
     done = set(DONE.read_text().split()) if DONE.exists() else set()
-    for ym in month_range(args.a, args.b):
-        if ym in done:
-            continue
-        y, m = map(int, ym.split("-"))
-        last = calendar.monthrange(y, m)[1]
-        state = json.loads(STATE.read_text()) if STATE.exists() else {}
-        url = state.get("next") if state.get("month") == ym else f"{BASE}?publishedFrom={ym}-01&publishedTo={ym}-{last:02d}&limit=100&stages=award"
-        n = state.get("n", 0) if state.get("month") == ym else 0
-        pages = state.get("pages", 0) if state.get("month") == ym else 0
-        while url:
-            d = get(url)
-            recs = []
-            for rel in d.get("releases", []):
-                recs += compact(rel)
-            n += len(d.get("releases", []))
-            pages += 1
-            url = (d.get("links") or {}).get("next")
-            with open(CACHE, "a") as f:
-                for r in recs:
-                    f.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
-            STATE.write_text(json.dumps({"month": ym, "next": url, "n": n, "pages": pages}))     # checkpoint: a restart resumes here
-            print(f"  {ym} page {pages} ({n} notices so far)", flush=True)
+    today = date.today()
+    todo = plan(date.fromisoformat(args.a), today, done)
+    print(f"{len(todo)} day(s) to fetch ({len(done)} already done)", flush=True)
+    for i, day in enumerate(todo):
+        n, recs, pages = fetch_day(day)
+        with open(CACHE, "a") as f:
+            for r in recs:
+                f.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
+        if day < today:
+            with open(DONE, "a") as f:
+                f.write(day.isoformat() + "\n")
+        print(f"{day}: {n} notices, {pages} page(s) [{i + 1}/{len(todo)}]", flush=True)
+        if i + 1 < len(todo):
             time.sleep(Pace.delay)
-        STATE.unlink(missing_ok=True)
-        with open(DONE, "a") as f:
-            f.write(ym + "\n")
-        print(f"{ym}: {n} notices, {pages} pages", flush=True)
 
 
 if __name__ == "__main__":
