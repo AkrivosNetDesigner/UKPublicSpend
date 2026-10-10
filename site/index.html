@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UK Public Spend Explorer</title>
+<meta name="description" content="Explore where UK public money goes, year by year, using only HM Treasury's PESA and Public Spending Statistics releases on GOV.UK. Includes automatic checks for unusual figures.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%231c5cab%27/%3E%3Crect x=%277%27 y=%2716%27 width=%276%27 height=%279%27 fill=%27white%27/%3E%3Crect x=%2713%27 y=%2711%27 width=%276%27 height=%2714%27 fill=%27white%27/%3E%3Crect x=%2719%27 y=%277%27 width=%276%27 height=%2718%27 fill=%27white%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>UK Public Spend Explorer</h1>
+      <p>Where the money goes, and where the numbers look odd. Sourced only from HM Treasury's <abbr title="Public Expenditure Statistical Analyses">PESA</abbr> and Public Spending Statistics on GOV.UK.</p>
+    </div>
+    <nav id="nav" aria-label="Sections"></nav>
+  </div>
+</header>
+<main id="main" class="wrap" tabindex="-1"><p class="loading">Loading data…</p></main>
+<footer class="wrap foot">
+  <p id="foot-meta"></p>
+  <p>Unofficial, independent visualisation. Every figure is taken from files published by HM Treasury on GOV.UK; see <a href="#/method">Method &amp; sources</a>. A flagged figure means “worth a closer look”, never “fraud”.</p>
+</footer>
+<div id="tip" class="tip" role="status" hidden></div>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

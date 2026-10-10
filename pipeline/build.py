@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Download the HM Treasury workbooks and build site/data/*.json.
+
+    python3 pipeline/build.py            # uses ./raw as a download cache
+
+Only files listed in pipeline/sources.json are fetched; they are all published
+via the two permitted GOV.UK collections.
+"""
+import datetime
+import json
+import os
+import ssl
+import sys
+import urllib.request
+from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+import analysis as A  # noqa: E402
+import parse as P  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+RAW = ROOT / "raw"
+OUT = ROOT / "site" / "data"
+
+
+def fetch(key, meta):
+    dest = RAW / (key + ".xlsx")
+    if dest.exists() and dest.stat().st_size > 1000:
+        return dest
+    RAW.mkdir(exist_ok=True)
+    ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+    print("downloading", meta["url"])
+    req = urllib.request.Request(meta["url"], headers={"User-Agent": "UKPublicSpend/1.0"})
+    with urllib.request.urlopen(req, timeout=120, context=ctx) as r:
+        dest.write_bytes(r.read())
+    return dest
+
+
+def dump(name, obj):
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / name).write_text(json.dumps(obj, separators=(",", ":"), ensure_ascii=False))
+
+
+def round_m(k):
+    return round(k / 1000.0, 3)
+
+
+def main():
+    src = json.loads((Path(__file__).parent / "sources.json").read_text())
+    paths = {k: fetch(k, m) for k, m in src["files"].items()}
+
+    # ---- long-run aggregates (Table 4.1) and functions (4.2 / 4.3 / 4.4)
+    agg = P.parse_aggregates(paths["pss2026_ch4"])
+    c4 = paths["pss2026_ch4"]
+    f42, f43, f44 = (P.parse_wide(c4, s) for s in ("4_2", "4_3", "4_4"))
+    functions = {"years": f42[0], "nominal": f42[1], "real": f43[1], "gdp": f44[1]}
+
+    # ---- Table 1.1
+    t11 = P.parse_table_1_1(paths["pss2026_ch1"])
+
+    # ---- regions (Chapter 9)
+    c9 = paths["pss2026_ch9"]
+    ry, abs_rows, hi = P.parse_region_block(c9, "9.1a")
+    _, comp_rows, _ = P.parse_region_block(c9, "9.1a", hi + 1)
+    comp = {r["label"]: r["values"] for r in comp_rows}
+    tme9 = comp.get("Total Managed Expenditure")
+    regions = {"years": ry,
+               "nominal": abs_rows,
+               "perhead": P.parse_region_block(c9, "9.1b")[1],
+               "real": P.parse_region_block(c9, "9.2a")[1],
+               "realperhead": P.parse_region_block(c9, "9.2b")[1],
+               "composition": comp_rows}
+    region_for_checks = {"abs": (ry, abs_rows), "tme": {"years": ry, "values": tme9} if tme9 else None}
+
+    # ---- price adjustment factor (Table 4.1: real / nominal Total Managed Expenditure)
+    real_factor = {a["year"]: a["tme_real"] / a["tme"] for a in agg if a["tme"]}
+
+    # ---- database releases
+    rel_keys = ["2024", "2025", "2026"]
+    rows_by = {k: P.parse_database(paths[f"pss{k}_db"]) for k in rel_keys}
+    segs_by = {k: A.build_segments(rows_by[k]) for k in rel_keys}
+    latest = "2026"
+    rows, segs = rows_by[latest], segs_by[latest]
+    years = sorted({r["year"] for r in rows})
+
+    # departments
+    dept = defaultdict(lambda: {"cat": defaultdict(lambda: defaultdict(float)),
+                                "group": defaultdict(lambda: defaultdict(float)),
+                                "segs": defaultdict(float)})
+    dbtotals = defaultdict(lambda: defaultdict(float))
+    for r in rows:
+        d = dept[r["dept"]]
+        d["cat"][f'{r["ctrl"]} {r["econ"].lower()}'][r["year"]] += r["amount"]
+        d["group"][r["group"]][r["year"]] += r["amount"]
+        d["segs"][r["code"]] += abs(r["amount"])
+        dbtotals[r["year"]][r["ctrl"]] += r["amount"]
+    depts = []
+    for name, d in dept.items():
+        total = [round_m(sum(c[y] for c in d["cat"].values())) for y in years] if False else \
+            [round_m(sum(c.get(y, 0) for c in d["cat"].values())) for y in years]
+        depts.append({
+            "name": name, "total": total,
+            "cat": {k: [round_m(v.get(y, 0)) for y in years] for k, v in d["cat"].items()},
+            "group": {k: [round_m(v.get(y, 0)) for y in years] for k, v in d["group"].items()
+                      if any(v.get(y, 0) for y in years)},
+            "nseg": len(d["segs"]),
+        })
+    depts.sort(key=lambda d: -abs(d["total"][-1]))
+    dump("departments.json", {"years": years, "depts": depts})
+
+    # segments
+    seg_out = []
+    for code, s in segs.items():
+        seg_out.append({"c": code, "n": s["name"], "d": s["dept"].get(years[-1]) or next(iter(s["dept"].values())),
+                        "g": s["group"], "t": s["ctrl"], "v": [round_m(s["vals"].get(y, 0)) for y in years]})
+    seg_out.sort(key=lambda s: -max(abs(x) for x in s["v"]))
+    dump("segments.json", {"years": years, "segs": seg_out})
+
+    # ---- anomaly detection
+    flags = A.segment_flags(segs, years)
+    flags += A.revision_flags(rel_keys, segs_by)
+    ranked = A.rank_segments(flags, segs)
+    for f in flags:
+        f["value"] = round_m(f["value"])
+        f["prev"] = None if f["prev"] is None else round_m(f["prev"])
+        if "delta" in f:
+            f["delta"] = round_m(f["delta"])
+    flags.sort(key=lambda f: (-f["sev"], -abs(f["value"] - (f["prev"] or 0)), f["code"]))
+    fn_flags = A.function_flags(functions["years"], functions["real"])
+    benford = A.benford_by_dept(rows)
+    opacity = A.opacity(rows, years)
+    rev = A.revision_summary(rel_keys, rows_by, latest)
+    rev_out = {d: {y: {r: round_m(v) for r, v in rels.items()} for y, rels in ys.items()} for d, ys in rev.items()}
+
+    checks = A.integrity_checks(t11, agg, f42, f43, region_for_checks, {"dbtotals": dbtotals})
+
+    counts = defaultdict(int)
+    for f in flags:
+        counts[f["type"]] += 1
+    dump("flags.json", {"params": A.PARAMS, "types": {k: {"title": v[0], "text": v[1]} for k, v in A.TYPE_INFO.items()},
+                        "counts": counts, "flags": flags, "ranked": ranked[:150], "function_flags": fn_flags,
+                        "benford": benford, "opacity": opacity, "revisions": rev_out, "releases": rel_keys})
+    dump("checks.json", {"checks": checks})
+    dump("aggregates.json", {"rows": agg, "real_factor": real_factor})
+    dump("functions.json", functions)
+    dump("regions.json", regions)
+    t11y, t11l = t11
+    dump("tme.json", {"years": t11y, "lines": t11l})
+    dump("meta.json", {
+        "generated": datetime.date.today().isoformat(), "latest_release": "Public Spending Statistics, July 2026",
+        "collections": src["collections"], "release_page": src["release_page"],
+        "files": [{"key": k, **m} for k, m in src["files"].items()],
+        "db_years": years})
+
+    print(f"segments: {len(segs)}  flags: {len(flags)}  by type: {dict(counts)}")
+    print("checks:", {c['id']: c['status'] for c in checks})
+    print("function flags:", len(fn_flags))
+
+
+if __name__ == "__main__":
+    main()
