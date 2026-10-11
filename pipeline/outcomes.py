@@ -23,6 +23,11 @@ OUTCOME_YEAR_WASTE = "2024-25"
 MIN_POP = 20000                     # per-resident figures are meaningless for the City of London and the Isles of Scilly
 
 
+def eligible(info, group):
+    """Councils of this kind that exist now: those with a return in the last two years (abolished councils drop out)."""
+    return sum(1 for i in info.values() if i["group"] == group and i.get("current", True))
+
+
 def _f(v):
     try:
         return float(v)
@@ -236,10 +241,10 @@ def build(ro_path, cap_path, pop, waste_path, road_red_path, road_len_path, imd_
                 pts.append({"code": code, "name": i["name"], "x": None if s is None else s / pop[code]["pop"], "y": w[outc], "imd": imd})
             a = analyse(pts, better)
             if a:
-                groups.append({"group": g, "eligible": sum(1 for i in councils_info.values() if i["group"] == g), "label": label, "outcome": outc, "outcome_label": olab, "better": better, "unit": unit, "stats": a[0],
+                groups.append({"group": g, "eligible": eligible(councils_info, g), "label": label, "outcome": outc, "outcome_label": olab, "better": better, "unit": unit, "y": {"suffix": unit if unit == "%" else " " + unit, "dp": 1 if unit == "%" else 0}, "stats": a[0],
                                "points": [{"c": p["code"], "n": p["name"], "x": round(p["x"], 2), "y": round(p["y"], 2), "d": round(p["imd"], 1)} for p in a[1]]})
     out["pairings"].append({"id": "waste", "title": "Waste and recycling", "service": "Environment and waste", "spend_label": "Spending on waste collection, recycling and disposal, £ per resident, " + OUTCOME_YEAR_WASTE,
-                            "year": OUTCOME_YEAR_WASTE, "groups": groups,
+                            "year": OUTCOME_YEAR_WASTE, "groups": groups, "x": {"prefix": "£", "dp": 0, "label": "Spending, £ per resident", "per": "resident"},
                             "notes": ["Spending is net revenue spending on waste collection, disposal, recycling and waste minimisation, plus the waste levy paid to joint disposal authorities. Trade (business) waste and street cleaning are excluded.",
                                       "Recycling rates are driven by what a council collects (separate food waste, garden waste charges, how bins are collected) as much as by how much it spends.",
                                       "District councils only collect; the county council disposes of what is collected, so their spending and results describe collection only."]})
@@ -269,10 +274,10 @@ def build(ro_path, cap_path, pop, waste_path, road_red_path, road_len_path, imd_
                             "ctl": [(pop[code]["pop"] / length[code]) if code in pop and pop[code]["pop"] >= MIN_POP else None]})
             a = analyse(pts, -1, ["people per km of road"])
             if a:
-                groups.append({"group": g, "eligible": sum(1 for i in councils_info.values() if i["group"] == g), "label": label, "outcome": "red_" + rk, "outcome_label": rlab + " (3-year average)", "better": -1, "unit": "%", "stats": a[0],
+                groups.append({"group": g, "eligible": eligible(councils_info, g), "label": label, "outcome": "red_" + rk, "outcome_label": rlab + " (3-year average)", "better": -1, "unit": "%", "y": {"suffix": "%", "dp": 1}, "stats": a[0],
                                "points": [{"c": p["code"], "n": p["name"], "x": round(p["x"], 2), "y": round(p["y"], 2), "d": round(p["imd"], 1)} for p in a[1]]})
     out["pairings"].append({"id": "roads", "title": "Roads", "service": "Highways and transport", "spend_label": "Road maintenance spending (revenue plus capital), £ thousand per km of locally managed road a year, average 2022-23 to 2024-25",
-                            "year": "2022-23 to 2024-25", "groups": groups,
+                            "year": "2022-23 to 2024-25", "groups": groups, "x": {"prefix": "£", "suffix": "k", "dp": 1, "label": "Road maintenance, £ thousand per km a year", "per": "km of road"},
                             "notes": ["Spending adds revenue spending on structural and routine maintenance of roads and bridges to capital spending on roads, street lighting and road safety, averaged over three years, per kilometre of road the council manages (DfT road length statistics).",
                                       "Capital spending includes new roads, street lighting and safety schemes as well as resurfacing, and councils are also paid for roads by central government: the match is rough.",
                                       "Condition comes from machine surveys (SCANNER) reported to the nearest whole per cent, averaged over the last three years. Heavy-traffic and urban roads wear faster than quiet rural ones."]})

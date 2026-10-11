@@ -867,14 +867,17 @@
       if (bState.p === "schools") return paintSchools();
       if (bState.p === "nhs") return paintNhs();
       const P = pairs[bState.p], G = P.groups[Math.min(bState.g, P.groups.length - 1)], S = G.stats;
-      const fx = P.id === "waste" ? v => "£" + nf0.format(v) : v => "£" + nf1.format(v) + "k";
-      const fy = G.unit === "%" ? v => nf1.format(v) + "%" : v => nf0.format(v) + " " + G.unit;
+      const X = P.x || {}, Y = G.y || {}, grades = Y.grades;
+      const dpf = (v, dp) => (dp ? nf1 : nf0).format(v);
+      const fx = v => (X.prefix || "") + dpf(v, X.dp) + (X.suffix || "");
+      const fy = grades ? v => grades[Math.round(v)] || "" : v => dpf(v, Y.dp) + (Y.suffix || "");
+      const jit = (c, i) => grades ? (((c.split("").reduce((a, ch) => a * 31 + ch.charCodeAt(0), i) % 100) / 100) - 0.5) * 0.55 : 0;
       const dsort = G.points.map(p => p.d).sort((a, b) => a - b), t1 = dsort[Math.floor(dsort.length / 3)], t2 = dsort[Math.floor(dsort.length * 2 / 3)];
       const col = d => d <= t1 ? SERIES[0] : d <= t2 ? SERIES[1] : SERIES[4];
-      const pts = G.points.map(p => ({ x: p.x, y: p.y, label: p.n, color: col(p.d), hl: p.c === bState.hl, extra: "Deprivation score " + nf1.format(p.d) + " (higher = more deprived)" }));
+      const pts = G.points.map((p, i) => ({ x: p.x, y: p.y + jit(p.c, i), label: p.n, ytrue: p.y, color: col(p.d), hl: p.c === bState.hl, extra: "Deprivation score " + nf1.format(p.d) + " (higher = more deprived)" }));
       const ctl = S.controls.length > 1 ? `deprivation and ${S.controls.slice(1).join(" and ")}` : "deprivation";
       const sig = ci => ci && (ci[0] > 0 || ci[1] < 0);
-      const rawLine = `Across ${S.n} councils of this kind, ${sig(S.rho_ci) ? strength(S.rho) + " pattern: councils that spend more per " + (P.id === "waste" ? "resident" : "km of road") + " tend to have " + dirWord(S.rho, G.better) + " results" : "no clear pattern between spending and results"} (rank correlation ${S.rho > 0 ? "+" : "−"}${nf2.format(Math.abs(S.rho))}${S.rho_ci ? `, 95% range ${nf2.format(S.rho_ci[0])} to ${nf2.format(S.rho_ci[1])}` : ""}).`;
+      const rawLine = `Across ${S.n} councils of this kind, ${sig(S.rho_ci) ? strength(S.rho) + " pattern: councils that spend more per " + (X.per || "resident") + " tend to have " + dirWord(S.rho, G.better) + " results" : "no clear pattern between spending and results"} (rank correlation ${S.rho > 0 ? "+" : "−"}${nf2.format(Math.abs(S.rho))}${S.rho_ci ? `, 95% range ${nf2.format(S.rho_ci[0])} to ${nf2.format(S.rho_ci[1])}` : ""}).`;
       const adjLine = `After allowing for ${ctl}: ${sig(S.rho_adj_ci) ? strength(S.rho_adj) + " pattern remains" : "the pattern is no longer distinguishable from none"} (${S.rho_adj > 0 ? "+" : "−"}${nf2.format(Math.abs(S.rho_adj))}${S.rho_adj_ci ? `, 95% range ${nf2.format(S.rho_adj_ci[0])} to ${nf2.format(S.rho_adj_ci[1])}` : ""}).`;
       const needLine = `More deprived areas ${S.outcome_vs_imd * (G.better) < -0.1 ? "have worse" : S.outcome_vs_imd * (G.better) > 0.1 ? "have better" : "have about the same"} results on this measure (${S.outcome_vs_imd > 0 ? "+" : "−"}${nf2.format(Math.abs(S.outcome_vs_imd))}) and ${S.spend_vs_imd > 0.1 ? "spend more" : S.spend_vs_imd < -0.1 ? "spend less" : "spend about the same"} (${S.spend_vs_imd > 0 ? "+" : "−"}${nf2.format(Math.abs(S.spend_vs_imd))}).`;
       const c1 = chartBox();
@@ -889,14 +892,16 @@
         el("div", { class: "controls" }, hlSel), hl ? el("p", {}, el("b", {}, hl.n), `: spending ${fx(hl.x)}, result ${fy(hl.y)}. Median for councils of this kind: spending ${fx(S.median_x)}, result ${fy(S.median_y)}.`) : null,
         legend, c1,
         el("p", { class: "small" }, `${S.n} of ${G.eligible} councils of this kind are shown; the rest lack spending, population, deprivation or result data for the period.`)),
+        ...(G.by_grade ? [card("Spending by inspection grade", "Median and middle half of councils (25th to 75th percentile) in each Ofsted grade. Few councils are graded Inadequate, so that row is based on very few.", el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Ofsted grade", "Councils", "Median", "Middle half"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
+          el("tbody", {}, G.by_grade.map(r => el("tr", {}, el("td", {}, r.grade), el("td", { class: "n" }, r.n), el("td", { class: "n" }, fx(r.median)), el("td", { class: "n" }, `${fx(r.p25)} to ${fx(r.p75)}`)))))))] : []),
         card("Where spending and results part ways", `Councils whose spending and results are furthest apart once need (${ctl}) is allowed for. These are the places to ask questions; click a council to see its spending profile.`,
           el("div", { class: "grid g2" }, list("Spending more than need suggests, results poorer than expected", "Possible questions: what is the money paying for? Is the service organised differently?", S.high_spend_poor),
             list("Spending less than need suggests, results better than expected", "Possible questions: is this efficient, or are costs being pushed elsewhere (to the county, to later years)?", S.low_spend_good))),
         card("How to read this pairing", P.spend_label + ".", el("ul", { class: "tight" }, ...P.notes.map(n => el("li", {}, n)),
           el("li", {}, "Correlations here are Spearman rank correlations: 0 means no pattern, +1 or −1 means councils line up perfectly. Allowing for need uses the English Indices of Deprivation 2025 (average score for the area)" + (S.controls.length > 1 ? " and " + S.controls.slice(1).join(", ") : "") + " by removing their linear effect on the ranks first. The 95% range shows how much a pattern of this size could be down to chance with this many councils.")),
-          el("p", { class: "small" }, "Sources: " + O.sources.map(s => s.publisher + ", " + s.title).join("; ") + ".")));
-      draw(() => Charts.scatter(c1, { points: pts, xfmt: fx, yfmt: fy, xAxis: P.id === "waste" ? fx : v => "£" + nf0.format(v) + "k", yAxis: G.unit === "%" ? v => nf0.format(v) + "%" : v => nf0.format(v),
-        xlabel: P.id === "waste" ? "Spending, £ per resident" : "Road maintenance, £ thousand per km a year", ylabel: G.outcome_label.replace(" (3-year average)", "") + (G.unit === "%" ? " (%)" : " (" + G.unit + ")"), trend: true, title: P.title + " scatter chart" }));
+          el("p", { class: "small" }, "Sources: " + (P.sources || O.sources).map(s => s.publisher + ", " + s.title).join("; ") + ".")));
+      draw(() => Charts.scatter(c1, { points: pts, xfmt: fx, yfmt: fy, xAxis: v => (X.prefix || "") + nf0.format(v) + (X.suffix || ""), yAxis: grades ? (v => grades[v] || "") : (v => nf0.format(v) + (Y.suffix || "")),
+        xlabel: X.label || "Spending", ylabel: G.outcome_label.replace(" (3-year average)", "").replace("Ofsted overall effectiveness of children's services", "Ofsted judgement") + (grades || !Y.suffix ? "" : " (" + Y.suffix.trim() + ")"), trend: !grades, title: P.title + " scatter chart" }));
     }
     function paintNhs() {
       const H = O.national.nhs, ms = H.months, i0 = ms.findIndex(m => m >= "2008-03"), mx = ms.slice(i0), L = ms.length - 1;
@@ -959,7 +964,7 @@
       draw(() => lineChart(c3, { x: ys, fmt: v => nf1.format(v) + "%", axisFmt: v => nf0.format(v) + "%", zero: true, title: "Free school meals", series: [{ name: "Pupils taking free school meals", values: ys.map(y => S.fsm_pct[y]) }] }));
     }
     paint();
-    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned: planning decisions and housing (homelessness), children's social care and Ofsted, public health and life expectancy.")));
+    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned: public health and life expectancy, and further national pairings (crime and policing, adult social care).")));
     return out;
   }
 

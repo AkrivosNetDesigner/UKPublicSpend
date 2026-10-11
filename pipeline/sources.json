@@ -87,6 +87,24 @@
     }
   },
   "apis": {
+    "mhclg_planning": {
+      "release": "Planning applications in England: live tables P151 and P153 (to June 2026)",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "title": "Speed of major and non-major planning decisions by local planning authority. The newest file is found through the GOV.UK content API.",
+      "url": "https://www.gov.uk/government/statistical-data-sets/live-tables-on-planning-application-statistics"
+    },
+    "mhclg_homelessness": {
+      "release": "Statutory homelessness: detailed local authority tables (financial year 2024-25, and January to March 2025)",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "title": "Households owed a duty, prevention outcomes and households in temporary accommodation by local authority. The newest files are found through the GOV.UK content API.",
+      "url": "https://www.gov.uk/government/statistical-data-sets/live-tables-on-homelessness"
+    },
+    "ofsted_la": {
+      "release": "Local authority inspection outcomes as at 31 March 2026",
+      "publisher": "Ofsted",
+      "title": "Overall effectiveness of local authority children's services from the latest inspection of each council. The newest release is found through the GOV.UK content API.",
+      "url": "https://www.gov.uk/government/collections/childrens-social-care-statistics"
+    },
     "nhs_rtt": {
       "release": "RTT waiting times: overview time series, April 2007 to latest month",
       "publisher": "NHS England",

@@ -26,6 +26,8 @@ import councils as L  # noqa: E402
 import outcomes as OC  # noqa: E402
 import national as NT  # noqa: E402
 import nhs as NHS  # noqa: E402
+import outcomes2 as OC2  # noqa: E402
+import govuk as GV  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -262,13 +264,35 @@ def main():
     eng = {r["year"]: L._year_vec(r["v"]) for r in ro if r["code"] == "E92000001"}
     dump("councils.json", L.export(lc, lyears, lpy, lmetrics, lstats, lflags, lpop, england=eng))
     # ---- what it buys: council spending paired with results (waste, roads), allowing for deprivation
+    cinfo = {k: {"name": v["name"], "group": v["group"], "cls": v["cls"], "current": bool(lpy in v["years"] or lyears[-2] in v["years"] or lpy in v["missing"])} for k, v in lc.items()}
     oc = OC.build(RAW / "revenue_outturn.csv", fresh(RAW / "capital_outturn.csv", lsrc["mhclg_capital"]["url"], 24 * 30), lpop,
                   fresh(RAW / "waste_la.ods", lsrc["defra_waste"]["url"], 24 * 30), fresh(RAW / "rdc0120.ods", lsrc["dft_road_condition"]["url"], 24 * 30),
                   fresh(RAW / "rdl0202.ods", lsrc["dft_road_length"]["url"], 24 * 30), fresh(RAW / "imd_lower.xlsx", lsrc["imd_lower"]["url"], 24 * 90),
-                  fresh(RAW / "imd_upper.xlsx", lsrc["imd_upper"]["url"], 24 * 90), {k: {"name": v["name"], "group": v["group"], "cls": v["cls"]} for k, v in lc.items()})
+                  fresh(RAW / "imd_upper.xlsx", lsrc["imd_upper"]["url"], 24 * 90), cinfo)
     edu = next(r for r in functions["real"] if r["label"] == "9. Education")
     ees = lambda k: NT.rows_from_csv_bytes(fresh(RAW / f"{k}.csv.gz", lsrc[k]["url"], 24 * 7).read_bytes())
     oc["national"] = {"schools": NT.build(ees("ees_ks2"), ees("ees_ks4"), ees("ees_pupils"), functions["years"][:len(edu["values"])], edu["values"])}
+    # ---- more pairings: planning decisions, homelessness, children's social care and Ofsted (files found through the GOV.UK content API)
+    def get_json_(url):
+        ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+        return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read())
+    gov = lambda page, pat, key=None: (lambda: GV.pick(get_json_(GV.API + page), pat, key))
+    PLAN, HOM, CSC = "/government/statistical-data-sets/live-tables-on-planning-application-statistics", "/government/statistical-data-sets/live-tables-on-homelessness", "/government/collections/childrens-social-care-statistics"
+    try:
+        hs = max(GV.fy_key(t) for t, _ in GV.attachments(get_json_(GV.API + HOM)) if "financial year" in t.lower())
+    except Exception:
+        hs = 2024
+    hom_year = f"{hs}-{(hs + 1) % 100:02d}"
+
+    def ofsted_url():
+        doc = get_json_(GV.API + GV.latest_document(get_json_(GV.API + CSC), r"local authority inspection outcomes as at"))
+        return GV.pick(doc, r"underlying data")
+    imd_lo, imd_up = OC.read_imd(RAW / "imd_lower.xlsx", RAW / "imd_upper.xlsx")
+    oc["pairings"] += OC2.build(RAW / "revenue_outturn.csv", lpop, cinfo, real_factor, imd_lo, imd_up, lpy,
+                                fresh(RAW / "plan_p151.ods", gov(PLAN, r"^Table P151")), fresh(RAW / "plan_p153.ods", gov(PLAN, r"^Table P153")), int(lpy[:4]) + 1,
+                                fresh(RAW / "hom_fy.ods", gov(HOM, r"financial year " + str(hs) + "-"), 24 * 7),
+                                fresh(RAW / "hom_ta.ods", gov(HOM, r"detailed local authority level tables: January to March " + str(hs + 1)), 24 * 7), hom_year,
+                                fresh(RAW / "ofsted.ods", ofsted_url, 24 * 7))
     def get_json(url):
         ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
         return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read())

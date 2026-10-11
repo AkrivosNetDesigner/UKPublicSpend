@@ -272,7 +272,7 @@
     const m = { l: 58, r: 16, t: 12, b: 46 };
     const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
     const xt = niceTicks(Math.min(0, ...xs), Math.max(...xs), 5), yt = niceTicks(Math.min(0, ...ys), Math.max(...ys), 5);
-    m.l = Math.max(m.l, 14 + 6.6 * Math.max(...yt.map(t => (o.yAxis || o.yfmt)(t).length)));
+    m.l = Math.max(m.l, 30 + 6.8 * Math.max(...yt.map(t => (o.yAxis || o.yfmt)(t).length)));
     const x0 = xt[0], x1 = xt[xt.length - 1], y0 = yt[0], y1 = yt[yt.length - 1];
     const X = v => m.l + (v - x0) / ((x1 - x0) || 1) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / ((y1 - y0) || 1)) * (H - m.t - m.b);
     const s = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.title || "Scatter chart" }, el);
