@@ -92,6 +92,24 @@
     }
   },
   "apis": {
+    "ni_rate_statistics": {
+      "release": "Rate statistics circular (LG 08/2026), rate year 2026/27",
+      "publisher": "Department for Communities (Northern Ireland)",
+      "title": "Table 3: each district council's estimated net expenditure on services for the previous and coming rate year (estimates set when rates are fixed, not outturn; no service split is published). The newest circular is found on the DfC publications pages.",
+      "url": "https://www.communities-ni.gov.uk/publications/circular-lg-082026-rate-statistics"
+    },
+    "scotland_slgfs": {
+      "release": "Scottish Local Government Finance Statistics (SLGFS), latest year",
+      "publisher": "Scottish Government",
+      "title": "SLGFS 'LA level - net revenue expenditure and income by service and type': every Scottish council, £ thousand. The newest workbook is found on the publication's documents page.",
+      "url": "https://www.gov.scot/publications/scottish-local-government-finance-statistics-2024-25/documents/"
+    },
+    "wales_outturn": {
+      "release": "Revenue outturn expenditure by authority and service, 2001-02 to 2024-25",
+      "publisher": "Welsh Government (StatsWales)",
+      "title": "Revenue outturn expenditure of the 22 Welsh councils by service, £ thousand and £ per head, through the StatsWales open data API",
+      "url": "https://api.stats.gov.wales/v2/213aeb99-18eb-42c9-b00e-e4b716e82cdf/data?format=csv"
+    },
     "mhclg_planning": {
       "release": "Planning applications in England: live tables P151 and P153 (to June 2026)",
       "publisher": "Ministry of Housing, Communities and Local Government",

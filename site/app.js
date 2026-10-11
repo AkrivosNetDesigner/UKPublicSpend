@@ -795,7 +795,7 @@
       const legend = el("p", { class: "small" }, el("span", { style: `color:${SERIES[0]}` }, "● "), "Least deprived third  ", el("span", { style: `color:${SERIES[1]}` }, "● "), "Middle third  ", el("span", { style: `color:${SERIES[4]}` }, "● "), "Most deprived third. Dashed line: straight-line fit, as a guide.");
       const hl = G.points.find(p => p.c === bState.hl);
       const list = (title, sub, rows) => el("div", {}, el("h4", {}, title), el("p", { class: "sub" }, sub), rows.length ? el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Council", "Spending", "Result"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
-        el("tbody", {}, rows.map(r => el("tr", { class: "click", onclick: () => { lcState.code = r.code; location.hash = "#/councils"; } }, el("td", {}, r.name), el("td", { class: "n" }, fx(r.x)), el("td", { class: "n" }, fy(r.y))))))) : el("p", { class: "small" }, "None stand out clearly."));
+        el("tbody", {}, rows.map(r => el("tr", { class: "click", onclick: () => { lcState.nation = "england"; lcState.code = r.code; location.hash = "#/councils"; } }, el("td", {}, r.name), el("td", { class: "n" }, fx(r.x)), el("td", { class: "n" }, fy(r.y))))))) : el("p", { class: "small" }, "None stand out clearly."));
       body.replaceChildren(card(P.title + ": " + G.outcome_label, G.label, ...(grp ? [el("div", { class: "controls" }, grp)] : []),
         ...(P.caution ? [el("div", { class: "notice" }, el("b", {}, "Careful with the direction. "), P.caution)] : []),
         el("ul", { class: "tight" }, el("li", {}, rawLine), el("li", {}, adjLine), el("li", {}, needLine)),
@@ -880,14 +880,108 @@
   /* ---------- Compare */
   const cmpState = { ds: "fn", basis: "real", a: null, b: null };
   /* ---------- Local councils (England) */
-  const lcState = { code: "", svc: "asc", group: "allpurpose", ftype: "", fsev: 2, flimit: 15 };
+  const lcState = { nation: "england", dvsvc: "", code: "", svc: "asc", group: "allpurpose", ftype: "", fsev: 2, flimit: 15 };
   VIEWS.councils = () => {
-    const root = el("div", {}, el("h2", {}, "Local councils in England"),
-      el("p", { class: "lede" }, "Councils spend around a fifth of all public money on social care, children's services, roads, waste, housing and more. This page uses each council's own return to the government (revenue outturn) with ONS population estimates to compare councils that do the same job."),
+    const NATS = [["england", "England"], ["scotland", "Scotland"], ["wales", "Wales"], ["northern_ireland", "Northern Ireland"]], nat = lcState.nation, natLabel = Object.fromEntries(NATS)[nat];
+    const root = el("div", {}, el("h2", {}, "Local councils in " + natLabel),
+      nat === "england" ? el("p", { class: "lede" }, "Councils spend large sums on social care, children's services, roads, waste, housing and more. This page uses each council's own return to the government (revenue outturn) with ONS population estimates to compare councils that do the same job.")
+        : el("p", { class: "lede" }, `How much each council in ${natLabel} spends, from the official statistics ${natLabel}'s government publishes, per resident, with a profile for every council. ${natLabel}'s services are defined differently from England's, so the nations are shown separately.`),
+      el("div", { class: "controls" }, select("lcnation", "Nation", NATS, nat, v => { lcState.nation = v; lcState.code = ""; route(); })),
       el("p", { class: "sub" }, "Loading council data…"));
-    loadJSON("councils").then(d => { D.lc = d; if (!main.contains(root)) return; root.lastChild.remove(); root.append(...lcBody()); }, e => root.append(el("div", { class: "notice" }, "Could not load council data: " + e.message)));
+    const fail = e => root.append(el("div", { class: "notice" }, "Could not load council data: " + e.message));
+    if (nat === "england") loadJSON("councils").then(d => { D.lc = d; if (!main.contains(root)) return; root.lastChild.remove(); root.append(...lcBody()); }, fail);
+    else loadJSON("councils_devolved").then(d => { D.dv = d; if (!main.contains(root)) return; root.lastChild.remove(); root.append(...devBody(d.nations.find(n => n.id === nat))); }, fail);
     return root;
   };
+  /* ---------- Local councils: Scotland, Wales and Northern Ireland (each nation's own official statistics; never compared across nations) */
+  function lcRangeBar(u, st) {
+    const lo = Math.min(st.p10, u ?? st.p10), hi = Math.max(st.p90, u ?? st.p90), X = v => ((v - lo) / ((hi - lo) || 1) * 100).toFixed(1) + "%";
+    return el("div", { class: "rangebar", title: `Typical range £${nf0.format(st.p10)} to £${nf0.format(st.p90)}` },
+      el("i", { class: "band", style: `left:${X(st.p10)};width:calc(${X(st.p90)} - ${X(st.p10)})` }), el("i", { class: "med", style: `left:${X(st.median)}` }), el("i", { class: "pt", style: `left:${u == null ? X(st.median) : X(u)}` }));
+  }
+  function devBody(N) {
+    const out = [], svcs = N.services, label = Object.fromEntries(svcs.map(s => [s.key, s.label])), denom = Object.fromEntries(svcs.map(s => [s.key, s.denom]));
+    const dName = { pop: "per resident", age0_17: "per child (0-17)", age65: "per person aged 65+" };
+    const yr = N.year, prevYr = N.years[N.years.length - 2];
+    const val = (c, k, y) => N.single_year ? (c.v ? c.v[k] : null) : ((c.y[y || yr] || {})[k]);
+    const unitOf = (c, k) => { const v = val(c, k), d = c.pop && c.pop[denom[k]]; return v == null || !d ? null : v * 1000 / d; };
+    const stat = k => N.stats.find(s => s.key === k);
+    const real = (v, y) => v == null ? null : v * rf(y) / 1000;
+    const tot = (cs, f) => cs.reduce((a, c) => a + (f(c) || 0), 0);
+    const total = c => N.id === "wales" ? val(c, "tot") : N.id === "scotland" ? c.gf : val(c, "net");
+    const spend = tot(N.councils, total), people = tot(N.councils, c => c.pop && c.pop.pop);
+    const svcTotals = svcs.map(s => ({ key: s.key, label: s.label, value: tot(N.councils, c => val(c, s.key)) })).filter(s => Math.abs(s.value) > 0).sort((a, b) => b.value - a.value);
+    const kp = [];
+    if (N.id === "wales") {
+      const prev = tot(N.councils, c => val(c, "tot", prevYr));
+      kp.push(kpi("Council revenue spending", mm(spend / 1000), `${yr} · 22 unitary councils · cash outturn`));
+      kp.push(kpi("Change in real terms", dpc((spend * rf(yr) / (prev * rf(prevYr)) - 1) * 100), `vs ${prevYr} (adjusted for inflation)`));
+    } else if (N.id === "scotland") {
+      const all = tot(N.councils, c => c.tot), hra = tot(N.councils, c => c.hra);
+      kp.push(kpi("Council net revenue spending", mm(all / 1000), `${yr} · all ${N.councils.length} councils (general fund ${mm(spend / 1000)} ${hra < 0 ? "less" : "plus"} a housing revenue account ${hra < 0 ? "surplus" : "deficit"} of ${mm(Math.abs(hra) / 1000)})`));
+    } else {
+      const prev = tot(N.councils, c => c.prev && c.prev.net);
+      kp.push(kpi("Estimated net spending", mm(spend / 1000), `${yr} rate year · an estimate, not what was spent`));
+      kp.push(kpi("Change on the year before", dpc((spend / prev - 1) * 100), `vs ${N.prior_year} estimate (cash, not adjusted for inflation)`));
+    }
+    kp.push(kpi("Per resident", "£" + nf0.format(spend * 1000 / people), `${N.id === "scotland" ? "service spending, general fund" : "spending"} · ONS mid-2024 population`));
+    kp.push(kpi(N.id === "northern_ireland" ? "Largest council" : "Largest service", N.id === "northern_ireland" ? [...N.councils].sort((a, b) => total(b) - total(a))[0].name : svcTotals[0].label,
+      N.id === "northern_ireland" ? mm(total([...N.councils].sort((a, b) => total(b) - total(a))[0]) / 1000) : mm(svcTotals[0].value / 1000)));
+    kp.push(kpi("Councils", String(N.councils.length), N.id === "northern_ireland" ? "district councils" : "unitary councils: each does the same job"));
+    out.push(el("div", { class: "notice info" }, el("b", {}, "Compared only within " + N.label + ". "), `${N.label}'s councils publish their spending on different service definitions from England and from each other, so nations are never compared with one another. ${N.peer_note} `,
+      el("b", {}, "No unusual-spending flags are shown for this nation yet: "), "flags are held back until they have been tested against each nation's own rules, so that no council is named unfairly."));
+    out.push(el("div", { class: "kpis" }, ...kp));
+    // composition
+    if (N.id === "wales") {
+      const ys = N.years.slice(-10), c1 = chartBox();
+      out.push(card("Where Welsh council spending goes", `Net revenue expenditure of the 22 unitary councils by service, £ million in 2025-26 prices (adjusted for inflation with the Treasury's GDP deflator).`, c1));
+      draw(() => stackedBars(c1, { x: ys, fmt: mm, axisFmt: v => "£" + nf0.format(v / 1000) + "bn", title: "Welsh council spending by service",
+        series: topPlusOther(svcTotals.map(s => ({ name: s.label, values: ys.map(y => real(tot(N.councils, c => val(c, s.key, y)), y)) })), 6, ys) }));
+    } else if (N.id === "scotland") {
+      const c1 = chartBox();
+      out.push(card("Where Scottish council spending goes", `Net revenue expenditure by service, general fund, £ million, ${yr}.`, c1));
+      draw(() => barChart(c1, { items: svcTotals.map(s => ({ label: s.label, value: s.value / 1000 })), fmt: mm, title: "Scottish council spending by service" }));
+    }
+    // profile
+    const prof = el("div", { id: "dv-profile" });
+    const sel = select("dvsel", "Choose a council", [["", "Select a council…"], ...N.councils.map(c => [c.code, c.name])], lcState.code, v => { lcState.code = v; paint(); });
+    out.push(card("Council profile", N.id === "northern_ireland" ? "Pick a council to see its estimated net expenditure per resident against the other ten." : "Pick a council to see its spending by service against the other councils in " + N.label + ".", el("div", { class: "controls" }, sel), prof));
+    function paint() {
+      prof.replaceChildren();
+      const c = N.councils.find(x => x.code === lcState.code);
+      if (!c) return;
+      const rows = svcs.filter(s => val(c, s.key) != null && (Math.abs(val(c, s.key)) > 0 || N.id === "northern_ireland")).map(s => ({ s, st: stat(s.key), u: unitOf(c, s.key), t: val(c, s.key) }))
+        .map(r => ({ ...r, d: r.st && r.u != null && r.st.median ? (r.u / r.st.median - 1) * 100 : null }));
+      prof.append(el("p", {}, el("b", {}, c.name), ` · population ${c.pop ? nf0.format(c.pop.pop) : "unknown"} · ${yr}${N.estimates ? " (estimate)" : ""}`));
+      prof.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Service", "Total", "Rate", "Typical", "Range (10th–90th)", "vs typical"].map((h, i) => el("th", { class: i > 0 && i < 4 || i === 5 ? "n" : "" }, h)))),
+        el("tbody", {}, rows.map(r => el("tr", {}, el("td", {}, r.s.label), el("td", { class: "n" }, mm(r.t / 1000)), el("td", { class: "n" }, r.u == null ? "–" : `£${nf0.format(r.u)}`),
+          el("td", { class: "n" }, r.st ? `£${nf0.format(r.st.median)}` : "–"), el("td", {}, r.st ? lcRangeBar(r.u, r.st) : "–"), el("td", { class: "n" }, r.d == null ? "–" : dpc(r.d))))))));
+      prof.append(el("p", { class: "small" }, "Rates are £ per resident, except education (per child aged 0-17). “Typical” is the median council in " + N.label + "; the range covers the middle 80% of councils."));
+      if (N.id === "scotland") prof.append(el("p", { class: "small" }, `Housing revenue account (council housing): ${mm((c.hra || 0) / 1000)}. Total including it: ${mm((c.tot || 0) / 1000)}.`));
+      if (N.id === "wales") {
+        const ys = N.years.filter(y => c.y[y] && c.y[y].tot != null), c2 = chartBox();
+        prof.append(el("h4", {}, "Total spending over time (£ million in 2025-26 prices)"), c2);
+        draw(() => lineChart(c2, { x: ys, fmt: mm, axisFmt: v => "£" + nf0.format(v) + "m", zero: true, title: c.name + " spending", series: [{ name: c.name, values: ys.map(y => real(c.y[y].tot, y)) }] }));
+      }
+    }
+    // league table
+    const lt = el("div", { id: "dv-league" });
+    const lsel = N.id === "northern_ireland" ? [] : [select("dvsv", "Service", svcs.filter(s => svcTotals.some(t => t.key === s.key)).map(s => [s.key, s.label]), lcState.dvsvc && label[lcState.dvsvc] ? lcState.dvsvc : svcTotals[0].key, v => { lcState.dvsvc = v; paintLeague(); })];
+    out.push(card("League table", "Who spends most and least " + (N.id === "northern_ireland" ? "per resident (estimates)" : "on a service") + ", compared with the other councils in " + N.label + ". High is not bad and low is not good: it shows where to ask why.", el("div", { class: "controls" }, ...lsel), lt));
+    function paintLeague() {
+      const k = N.id === "northern_ireland" ? "net" : (lcState.dvsvc && label[lcState.dvsvc] ? lcState.dvsvc : svcTotals[0].key);
+      const items = N.councils.map(c => ({ label: c.name, value: unitOf(c, k) })).filter(i => i.value != null).sort((a, b) => b.value - a.value);
+      const ch = items.length > 24 ? items.slice(0, 12).concat(items.slice(-12)) : items, cb = chartBox();
+      lt.replaceChildren(el("p", { class: "sub" }, `${label[k]}, £ ${dName[denom[k]]}, ${yr}.${items.length > 24 ? ` Top 12 and bottom 12 of ${items.length} councils.` : ""}`), cb);
+      draw(() => barChart(cb, { items: ch, fmt: v => "£" + nf0.format(v), title: label[k] + " league table" }));
+    }
+    paintLeague();
+    out.push(card("How to read these figures", null, el("ul", { class: "tight" }, ...N.notes.map(n => el("li", {}, n)),
+      el("li", {}, "The arithmetic is checked on the Data checks page (services add up to totals, councils add up to the published totals, and the populations add up to the national total)."))));
+    paint();
+    return out;
+  }
+
   function lcBody() {
     const L = D.lc, F = Object.fromEntries(L.fields.map((f, i) => [f, i])), py = L.peer_year, ly = L.years[L.years.length - 1];
     const svcs = L.services, label = Object.fromEntries(svcs.map(s => [s.key, s.label])), denom = Object.fromEntries(svcs.map(s => [s.key, s.denom]));
@@ -905,7 +999,7 @@
     const top = svcOrder[0];
     const out = [];
     out.push(el("p", { class: "lede" }, `Figures are net current expenditure by service, from the Ministry of Housing, Communities and Local Government (MHCLG) revenue outturn returns, ${L.years[0]} to ${ly}. ${ly} is provisional and ${nSub} of ${nAll} councils have submitted for ${py}. Spending is shown in ${ly} prices using the GDP deflator. Population is ONS ${L.population_year}.`));
-    out.push(el("div", { class: "notice" }, el("b", {}, "A screening tool, not an accusation. "), "Councils differ in the people they serve (age, deprivation, rurality, London costs), in whether they run a service themselves or share it, and in accounting choices. A council far from its peers is a prompt to ask why. Only England is covered; Scotland, Wales and Northern Ireland publish on different systems."));
+    out.push(el("div", { class: "notice" }, el("b", {}, "A screening tool, not an accusation. "), "Councils differ in the people they serve (age, deprivation, rurality, London costs), in whether they run a service themselves or share it, and in accounting choices. A council far from its peers is a prompt to ask why. This page is England; choose another nation above. Scotland, Wales and Northern Ireland publish on different systems, so each is shown separately and never compared with England."));
     out.push(el("div", { class: "kpis" },
       kpi("Council service spending", mm(real(e1[F.totsx], ly)), `${ly} · all English councils incl. police and fire`),
       kpi("Change in real terms", dpc((e1[F.totsx] * rf(ly) / (e0[F.totsx] * rf(L.years[L.years.length - 2])) - 1) * 100), `vs ${L.years[L.years.length - 2]}`),
@@ -937,7 +1031,7 @@
       prof.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Service", "Total", "Rate", "Typical", "Range (10th–90th)", "vs typical"].map((h, i) => el("th", { class: i > 0 && i < 4 || i === 5 ? "n" : "" }, h)))),
         el("tbody", {}, rows.map(r => el("tr", {}, el("td", {}, r.s.label), el("td", { class: "n" }, mm(real(r.tot, yr))),
           el("td", { class: "n" }, r.u == null ? "–" : `£${nf0.format(r.u)}`), el("td", { class: "n" }, r.st ? `£${nf0.format(r.st.median)}` : "–"),
-          el("td", {}, r.st ? rangeBar(r.u, r.st) : "–"), el("td", { class: "n" }, r.d == null ? "–" : dpc(r.d))))))));
+          el("td", {}, r.st ? lcRangeBar(r.u, r.st) : "–"), el("td", { class: "n" }, r.d == null ? "–" : dpc(r.d))))))));
       prof.append(el("p", { class: "small" }, "Rates are £ per resident, except adult social care (per person aged 65+) and children's social care and education (per child aged 0-17). “Typical” is the median council of the same kind."));
       const ys = L.years.filter(y => c.y[y]);
       prof.append(el("h4", {}, "Total service spending over time (real terms)"), c2);
@@ -948,11 +1042,6 @@
         kpi("Schools funding (DSG) balance", mm((dsg || 0) / 1000), dsg < 0 ? "deficit" : "surplus or none"), kpi("Net interest paid", mm((val(c, yr, "netint") || 0) / 1000), nr ? pc(val(c, yr, "netint") / nr * 100) + " of net spending" : "")));
       const fl = L.flags.filter(f => f.code === c.code);
       if (fl.length) prof.append(el("ul", { class: "tight" }, fl.map(f => el("li", {}, sevBadge(f.sev), " ", el("b", {}, L.flag_types[f.type].title), " · ", f.year, " – ", f.detail))));
-    }
-    function rangeBar(u, st) {
-      const lo = Math.min(st.p10, u ?? st.p10), hi = Math.max(st.p90, u ?? st.p90), X = v => ((v - lo) / ((hi - lo) || 1) * 100).toFixed(1) + "%";
-      return el("div", { class: "rangebar", title: `Typical range £${nf0.format(st.p10)} to £${nf0.format(st.p90)}` },
-        el("i", { class: "band", style: `left:${X(st.p10)};width:calc(${X(st.p90)} - ${X(st.p10)})` }), el("i", { class: "med", style: `left:${X(st.median)}` }), el("i", { class: "pt", style: `left:${u == null ? X(st.median) : X(u)}` }));
     }
     // league table
     const lt = el("div", { id: "lc-league" });
@@ -1218,7 +1307,7 @@
     root.append(el("div", { class: "kpis" }, kpi("Pass", String(C.filter(c => c.status === "pass").length), "agree within rounding"), kpi("Discrepancy", String(C.filter(c => c.status === "warn").length), "outside rounding tolerance"), kpi("Documented gap", String(C.filter(c => c.status === "info").length), "explained in the source notes")));
     let lastSource = null;
     C.forEach(c => {
-      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "Borrowing": "Borrowing and gilts (ONS, Debt Management Office)", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
+      if (c.source !== lastSource) { lastSource = c.source; root.append(el("h3", { style: "margin:20px 0 8px" }, { "HMRC": "HMRC tables", "DWP": "DWP benefit fraud and error tables", "Borrowing": "Borrowing and gilts (ONS, Debt Management Office)", "Local councils (Scotland, Wales, Northern Ireland)": "Councils in Scotland, Wales and Northern Ireland", "ONS": "ONS public sector finances (and agreement with the Treasury)" }[lastSource] || "HM Treasury tables")); }
       const unit = /£bn/.test(c.title) ? "£bn" : /£m/.test(c.title) ? "£m" : "";
       const tol = c.tolerance > 1e9 ? 0 : c.tolerance;
       const head = el("tr", {}, ["Year", "Expected", "Table shows", "Gap"].map((h, i) => el("th", { class: i ? "n" : "" }, h)));
@@ -1240,7 +1329,7 @@
   VIEWS.method = () => {
     const P = D.flags.params, T = D.flags.types, T_ = D.hmrc.flag_types;
     const root = el("div", {}, el("h2", {}, "Method & sources"));
-    root.append(card("Sources (and only these)", "Every number comes from an official source: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK; the ONS Public Sector Finances dataset; and, for who lends to government and at what price, the Debt Management Office and the Bank of England.",
+    root.append(card("Sources (and only these)", "Every number comes from an official source: HM Treasury (Public Spending Statistics and PESA), HMRC (tax receipts and tax gap statistics) and DWP (fraud and error in the benefit system), all on GOV.UK; the ONS Public Sector Finances dataset; for councils, MHCLG (England), the Scottish Government, the Welsh Government (StatsWales) and the Department for Communities (Northern Ireland); and, for who lends to government and at what price, the Debt Management Office and the Bank of England.",
       el("ul", { class: "tight" }, D.meta.collections.map(u => el("li", {}, el("a", { href: u, rel: "noopener" }, u)))),
       el("p", { class: "small" }, "Files used (all downloaded and processed by pipeline/build.py in the project, so anyone can reproduce the data):"),
       el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, D.meta.files.map(f => el("tr", {}, el("td", {}, f.publisher), el("td", {}, f.release), el("td", {}, f.title), el("td", {}, el("a", { href: f.url, rel: "noopener" }, f.api ? "API" : "download")))))))));

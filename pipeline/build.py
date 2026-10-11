@@ -27,6 +27,8 @@ import national as NT  # noqa: E402
 import nhs as NHS  # noqa: E402
 import outcomes2 as OC2  # noqa: E402
 import govuk as GV  # noqa: E402
+import devolved as DV  # noqa: E402
+import ni as NI  # noqa: E402
 import parse as P  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -291,6 +293,16 @@ def main():
     rtt = NHS.read(fresh(RAW / "nhs_rtt.xlsx", lambda: NHS.discover(get_json), 24 * 3))
     oc["national"]["nhs"] = NHS.build(rtt, functions["years"][:len(health)], health, hgdp)
     dump("outcomes.json", oc)
+    # ---- councils in Scotland and Wales (official statistics of each nation; Northern Ireland to follow)
+    def get_text(url):
+        ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+        return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read().decode("utf-8", "ignore")
+    sc_path = fresh(RAW / "scotland_slgfs.xlsx", lambda: DV.discover_scotland(get_text)[0], 24 * 30)
+    sc, sc_checks = DV.build_scotland(sc_path, lpop, DV.scotland_year(sc_path))
+    wa, wa_checks = DV.build_wales(fresh(RAW / "wales_outturn.csv", lsrc["wales_outturn"]["url"], 24 * 30), lpop, real_factor)
+    ni_nation, ni_checks = NI.build(NI.pdf_text(fresh(RAW / "ni_rate_statistics.pdf", lambda: NI.discover(get_text), 24 * 30)), lpop)
+    checks += sc_checks + wa_checks + ni_checks
+    dump("councils_devolved.json", {"nations": [sc, wa, ni_nation], "real_factor": real_factor})
     dump("checks.json", {"checks": checks})      # written last, once every source has contributed its checks
 
     print("function flags:", len(fn_flags), " hmrc flags:", len(hflags), " ons flags:", len(oflags), " dwp flags:", len(dflags))
