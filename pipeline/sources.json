@@ -1,5 +1,5 @@
 {
-  "_note": "Every source below is official: HM Treasury, HMRC and DWP (GOV.UK), the ONS, the Cabinet Office (Contracts Finder), the UK Debt Management Office and the Bank of England. HMRC, ONS, DWP, Contracts Finder, the DMO and the Bank of England were added at the user's request. The OBR was also requested but blocks automated downloads.",
+  "_note": "Every source below is official: HM Treasury, HMRC and DWP (GOV.UK), the ONS, the UK Debt Management Office and the Bank of England. HMRC, ONS, DWP, the DMO and the Bank of England were added at the user's request. The OBR was also requested but blocks automated downloads.",
   "collections": [
     "https://www.gov.uk/government/collections/national-statistics-release",
     "https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa",
@@ -7,8 +7,6 @@
     "https://www.gov.uk/government/collections/measuring-tax-gaps",
     "https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances",
     "https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system",
-    "https://www.contractsfinder.service.gov.uk/",
-    "https://www.find-tender.service.gov.uk/",
     "https://www.dmo.gov.uk/data/gilt-market/",
     "https://www.bankofengland.co.uk/boeapps/database/"
   ],
@@ -203,18 +201,6 @@
       "publisher": "Office for National Statistics",
       "title": "Population estimates by local authority and single year of age, used to put council spending per resident, per child and per person aged 65+",
       "url": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/populationestimatesforukenglandandwalesscotlandandnorthernireland/mid2024/mye24tablesuk.xlsx"
-    },
-    "find_a_tender": {
-      "release": "Find a Tender award notices (recent days; see window on the Contracts page)",
-      "publisher": "Cabinet Office",
-      "title": "Find a Tender OCDS API: award notices, downloaded by pipeline/fetch_find_tender.py (organisation-level fields only; named contact people are discarded; framework call-offs are kept apart from direct awards)",
-      "url": "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages"
-    },
-    "contracts_finder": {
-      "release": "Contracts Finder award notices (recent days; see window on the Contracts page)",
-      "publisher": "Cabinet Office",
-      "title": "Contracts Finder OCDS API: award notices, downloaded by pipeline/fetch_contracts.py (organisation-level fields only; named contact people are discarded)",
-      "url": "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search"
     },
     "dmo_holdings": {
       "release": "Gilt holdings by type of holder (quarterly, 1987 to 2026 Q1)",

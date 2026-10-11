@@ -7,8 +7,6 @@ A static website for exploring where UK public money goes, year by year, with au
 - HM Treasury: <https://www.gov.uk/government/collections/national-statistics-release> (Public Spending Statistics) and <https://www.gov.uk/government/collections/public-expenditure-statistical-analyses-pesa> (PESA)
 - HMRC: [tax receipts and NICs](https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk) (monthly from April 2017) and [Measuring tax gaps](https://www.gov.uk/government/collections/measuring-tax-gaps)
 - DWP: [Fraud and error in the benefit system](https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system) (annual estimates for Great Britain; the FYE 2024, 2025 and 2026 releases)
-- Cabinet Office: [Find a Tender](https://www.find-tender.service.gov.uk/) award notices via its OCDS API (`pipeline/fetch_find_tender.py`: about 20 requests fetch two months; framework call-offs and exempt contracts are kept apart from true direct awards, whose stated reason is kept)
-- Cabinet Office: [Contracts Finder](https://www.contractsfinder.service.gov.uk/) award notices, via its OCDS API (`pipeline/fetch_contracts.py`, polite and resumable; keeps organisation-level fields only and discards named contact people)
 - MHCLG: [Local authority revenue expenditure and financing, England: revenue outturn](https://www.gov.uk/government/collections/local-authority-revenue-expenditure-and-financing) (time series CSV, every council, 2017-18 onward) with ONS [mid-year population estimates](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates) by local authority and single year of age
 - Defra: [local authority collected waste management](https://www.gov.uk/government/statistics/local-authority-collected-waste-management-annual-results); DfT: [road condition](https://www.gov.uk/government/statistical-data-sets/road-condition-statistics-data-tables-rdc) and [road length](https://www.gov.uk/government/statistical-data-sets/road-length-statistics-rdl) statistics; MHCLG: [capital outturn](https://www.gov.uk/government/statistics/local-authority-capital-expenditure-and-receipts-in-england-final-outturn-time-series) and [English indices of deprivation 2025](https://www.gov.uk/government/statistics/english-indices-of-deprivation-2025)
 - MHCLG: [planning application statistics](https://www.gov.uk/government/collections/planning-applications-statistics) (speed of decisions by authority) and [statutory homelessness](https://www.gov.uk/government/statistical-data-sets/live-tables-on-homelessness) (detailed local authority tables); Ofsted: [local authority inspection outcomes](https://www.gov.uk/government/collections/childrens-social-care-statistics)
@@ -33,7 +31,6 @@ The exact files are listed in [`pipeline/sources.json`](pipeline/sources.json) a
 
 | Monthly spending, receipts, borrowing, debt interest, net debt | ONS Public sector finances (22 series, selected by CDID) |
 | Benefit fraud and error: overpaid and underpaid by benefit, by type and by reason, how recently each was measured, recoveries, restatements | DWP fraud and error data tables (3 releases) |
-| Contract awards, kept apart from tenders and spending (Contracts Finder and Find a Tender): signed contracts vs awards without a recorded signature, framework ceilings set aside, duplicates across services counted once; awards by month, procedure, sector, buyer and supplier; red flags (direct awards, late notices, estimate gaps, repeat awards, concentration, pile-ups below round values) | Contracts Finder award notices (last 60 days by default, extendable; Find a Tender takes under a minute, Contracts Finder is rate-limited to about 12 requests per 5 minutes) |
 | Borrowing and debt: borrowing since 1946, net debt, who holds gilts, gilt yields, the price paid on new gilts, interest as a share of receipts | ONS annual and monthly series, DMO, Bank of England |
 | Local councils (England): spending by service, per resident / child / person aged 65+, peer comparison, reserves, schools deficits, interest, league tables, council profiles | MHCLG revenue outturn, ONS population |
 | What it buys: council waste and road spending against recycling rates and road condition, before and after allowing for deprivation | MHCLG, Defra, DfT, IoD2025 (`pipeline/outcomes.py`) |
@@ -62,14 +59,15 @@ Screening tests, not accusations. Anything flagged is "worth a look"; most flags
 13. Unusual months in ONS public finance series since 2015 (same method; net borrowing and net investment excluded because they cross zero)
 14. ONS identities (spending − receipts = borrowing; central government current + capital = total) and ONS vs Treasury annual totals
 15. DWP benefit screens: high overpayment rates, benefits whose rate was last measured more than three years ago (or never), and estimates restated between releases; DWP internal checks (components, percentages, recoveries, benefits sum to the total, reasons sum to each benefit) and a scope comparison with the Treasury's benefit spending
-16. Contracts: large awards without competition, notices published long after the award, awards far from the advertised value, very long contracts, repeat awards to one supplier, buyers dominated by one supplier, buyers that rarely state their procedure, and pile-ups of awards just below round values
-17. Unusual months in government borrowing (year-on-year, in £ because borrowing crosses zero), and checks that gilt holders add up to the total and that borrowing equals spending minus receipts
-18. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
-19. Local councils: spending far from similar councils, sudden changes, thin reserves, schools (DSG) deficits, heavy interest, loss-making investment property, missing returns; checks that council returns add up to the published class totals and the 13 service lines to total service spending (`pipeline/councils.py`)
+16. Unusual months in government borrowing (year-on-year, in £ because borrowing crosses zero), and checks that gilt holders add up to the total and that borrowing equals spending minus receipts
+17. Tax gap estimates that were later revised (HMRC's first estimates of recent years have been revised up in each of the last six editions)
+18. Local councils: spending far from similar councils, sudden changes, thin reserves, schools (DSG) deficits, heavy interest, loss-making investment property, missing returns; checks that council returns add up to the published class totals and the 13 service lines to total service spending (`pipeline/councils.py`)
 
 All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) and are shown on the site.
 
 ## Not included yet
+
+- **Government contracts.** A Contracts page (Contracts Finder and Find a Tender award notices) was built and then removed: notice values are often estimates, ceilings or lifetime maxima, and a fact-check of the 20 largest awards found nine that were wrong or misleading. It will only come back once contracts are built from full notice records with checked value types, duplicate matching and status. The downloaders and analysis (`pipeline/fetch_contracts.py`, `fetch_find_tender.py`, `procurement.py`) remain in the repository but are not run or published.
 
 **OBR forecasts vs outturn** (the Historical Official Forecasts Database). The OBR's download links redirect automated requests to a "No Access" page, so the pipeline cannot fetch it. If you download the spreadsheet yourself from <https://obr.uk/data/> and add it to the repo, a parser can be written against the real file.
 
@@ -84,11 +82,9 @@ All thresholds are in [`pipeline/analysis.py`](pipeline/analysis.py) (`PARAMS`) 
 
 ```bash
 pip install openpyxl xlrd                 # openpyxl reads .xlsx; xlrd reads the DMO's older .xls files
-python3 pipeline/fetch_contracts.py       # Contracts Finder award notices into ./raw, one day at a time: the last 60 days by default (about 45 minutes,
                                           # the API allows ~12 requests per 5 minutes). Incremental: later runs fetch only days not yet seen.
                                           # Extend further back with e.g. --from 2026-04-01 (roughly 15 minutes per month of history)
 python3 pipeline/build.py                 # downloads the workbooks into ./raw and writes site/data/*.json
-                                          # (add --skip-contracts while the Contracts Finder download is still running)
 python3 -m unittest discover -s pipeline/tests
 python3 -m http.server -d site 8000       # then open http://localhost:8000
 ```
@@ -100,7 +96,6 @@ python3 -m http.server -d site 8000       # then open http://localhost:8000
 `.github/workflows/refresh-data.yml` runs on the 6th of each month (and on demand from the repository's Actions tab): it runs the tests, downloads the newest official files, rebuilds `site/data` and opens a pull request. Nothing goes live until you merge it and redeploy.
 
 - Files that change during the year are found automatically: NHS England waiting times (through its public REST API), GOV.UK releases (through the GOV.UK content API: HMRC receipts, MHCLG revenue and capital outturn, planning, homelessness, Defra waste, DfT roads, Ofsted), the DMO and Bank of England pages, the ONS public finances file, and the Department for Education data sets.
-- Contracts Finder is fetched day by day with a cache between runs, so each month only the new days are downloaded.
 - Files published once a year are **not** refreshed automatically because they have a new file name and page each time: the Treasury Public Spending Statistics (July), HMRC tax gap (June), DWP fraud and error (May), the English indices of deprivation and the ONS population estimates. Update their entries in `pipeline/sources.json` when they appear.
 - One-time setup: in the repository on GitHub, open Settings > Actions > General and tick "Allow GitHub Actions to create and approve pull requests".
 
