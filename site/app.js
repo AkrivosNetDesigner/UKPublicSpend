@@ -874,7 +874,6 @@
       draw(() => lineChart(c3, { x: ys, fmt: v => nf1.format(v) + "%", axisFmt: v => nf0.format(v) + "%", zero: true, title: "Free school meals", series: [{ name: "Pupils taking free school meals", values: ys.map(y => S.fsm_pct[y]) }] }));
     }
     paint();
-    out.push(card("What is coming", null, el("p", { class: "small" }, "Planned: public health and life expectancy, and further national pairings (crime and policing, adult social care).")));
     return out;
   }
 
