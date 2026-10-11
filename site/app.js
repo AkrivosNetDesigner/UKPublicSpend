@@ -5,7 +5,7 @@
   const main = document.getElementById("main");
   const ROUTES = [
     ["overview", "Overview"], ["functions", "By function"], ["departments", "By department"],
-    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["councils", "Local councils"], ["buys", "What it buys"], ["benefits", "Benefit fraud & error"], ["procurement", "Contracts"], ["compare", "Compare years"], ["flags", "Unusual figures"],
+    ["regions", "By region"], ["tax", "Tax & tax gap"], ["monthly", "Monthly finances"], ["borrowing", "Borrowing & debt"], ["councils", "Local councils"], ["buys", "What it buys"], ["benefits", "Benefit fraud & error"], ["procurement", "Contract awards"], ["compare", "Compare years"], ["flags", "Unusual figures"],
     ["checks", "Data checks"], ["method", "Method & sources"],
   ];
   let draws = [], live = false;
@@ -662,28 +662,40 @@
   };
 
   /* ---------- Contracts (Contracts Finder and Find a Tender award notices) */
-  const procState = { mode: "value", sort: "value", q: "", ftype: "", sev: 2, limit: 20, fq: "" };
+  const procState = { view: "all", mode: "value", sort: "value", q: "", ftype: "", sev: 2, limit: 20, fq: "" };
   const CLS = [["competitive", "Competitive"], ["framework", "Framework call-off"], ["direct", "Direct award / no competition"], ["unspecified", "Procedure not stated"], ["other", "Other"]];
   const CLS_COLOR = { competitive: "var(--s1)", framework: "var(--s3)", direct: "var(--s2)", unspecified: "var(--s4)", other: "var(--other)" };
   const gbp = v => { const a = Math.abs(v), s = v < 0 ? "−" : ""; return a >= 1e9 ? `${s}£${nf2.format(a / 1e9)}bn` : a >= 1e6 ? `${s}£${nf1.format(a / 1e6)}m` : `${s}£${nf0.format(a / 1e3)}k`; };
   VIEWS.procurement = () => {
-    const P = D.proc, S = P.summary, q = S.quality, cls = S.by_class;
+    const P0 = D.proc, P = procState.view === "all" || !P0.views[procState.view] ? P0 : { ...P0, ...P0.views[procState.view] }, S = P.summary, q = P0.summary.quality, cls = S.by_class;
     const SRC = { cf: "Contracts Finder", fts: "Find a Tender" }, srcText = Object.entries(S.by_source || { cf: { n: S.n } }).map(([k, v]) => `${nf0.format(v.n)} from ${SRC[k] || k}`).join(" and ");
     const share = k => (cls[k] ? cls[k].value / S.total_value * 100 : 0), shareN = k => (cls[k] ? cls[k].n / S.n * 100 : 0);
-    const root = el("div", {}, el("h2", {}, "Government contracts"),
-      el("p", { class: "lede" }, `Contracts that public bodies in England (and some UK-wide bodies) published as awarded on Contracts Finder and Find a Tender (${srcText}), ${monLabel(S.months[0])} to ${monLabel(S.months.at(-1))}. A contract's value is its total over its lifetime, not a year's spending, and only contracts the buyer chose or had to publish appear here, so this is a window onto procurement and not the whole of it.`),
+    const st = P0.summary.by_status, cl = P0.ceilings, noneSt = { n: 0, value: 0 };
+    const root = el("div", {}, el("h2", {}, "Contract awards: what has been agreed"),
+      el("p", { class: "lede" }, `Contracts that public bodies in England (and some UK-wide bodies) have awarded, as published on Contracts Finder and Find a Tender (${srcText}), ${monLabel(S.months[0])} to ${monLabel(S.months.at(-1))}. This is what has been agreed, not what has been spent: a contract's value is the buyer's estimate of its total over its whole life.`),
+      card("Where these figures sit in the buying process", null, el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Stage", "What it is", "On this page?"].map(h => el("th", {}, h)))),
+        el("tbody", {},
+          el("tr", {}, el("td", {}, el("b", {}, "1. Tender")), el("td", {}, "The invitation to bid: the competitive process a public body runs to ask suppliers for offers. Nothing is agreed yet."), el("td", {}, "No. Tenders are not shown, and are not counted as spending.")),
+          el("tr", {}, el("td", {}, el("b", {}, "2. Award")), el("td", {}, "The buyer's decision to give the work to a named supplier, at a stated value."), el("td", {}, "Yes: awards from both services. Contracts Finder records the award but not the signature.")),
+          el("tr", {}, el("td", {}, el("b", {}, "3. Signed contract")), el("td", {}, "The formal, legally binding agreement with the winning supplier, signed after the award."), el("td", {}, "Yes, where the notice records a signature date (Find a Tender).")),
+          el("tr", {}, el("td", {}, el("b", {}, "4. Payments")), el("td", {}, "What the buyer actually pays, over the life of the contract."), el("td", {}, "No. Not in these notices; it is published separately (spend-over-£25,000 returns).")))))),
+      el("div", { class: "controls" }, select("pview", "Show", [["all", "All agreed awards"], ["signed", "Signed contracts only (Find a Tender, signature date recorded)"], ["awarded", "Awarded, signature not recorded (mostly Contracts Finder)"]], procState.view, v => { procState.view = v; route(); })),
       el("div", { class: "kpis" },
-        kpi("Awards published", nf0.format(S.n), `${monLabel(S.months[0])} – ${monLabel(S.months.at(-1))}`),
-        kpi("Total contract value", gbp(S.total_value), `median award ${gbp(S.median)}`),
-        kpi("Competitive", pc(share("competitive")), `of value · ${pc(shareN("competitive"))} of awards`),
+        kpi("Awards", nf0.format(S.n), `${monLabel(S.months[0])} – ${monLabel(S.months.at(-1))} · median ${gbp(S.median)}`),
+        kpi("Agreed value", gbp(S.total_value), "total over the life of the contracts, not spending"),
+        kpi("Signed contracts", gbp((st.signed || noneSt).value), `${nf0.format((st.signed || noneSt).n)} awards with a signature date`),
+        kpi("Awarded, not shown as signed", gbp((st.awarded || noneSt).value), `${nf0.format((st.awarded || noneSt).n)} awards; signature not recorded`),
         kpi("Direct award", pc(share("direct")), `of value · ${pc(shareN("direct"))} of awards`),
-        kpi("Procedure not stated", pc(shareN("unspecified")), `of awards · ${nf0.format(q.unspecified_method)} notices`),
         kpi("Flags raised", nf0.format(Object.values(P.flag_counts).reduce((a, b) => a + b, 0)), `${P.sev_counts["3"] || 0} high priority`)));
     root.append(el("div", { class: "notice info" }, el("b", {}, "What this cannot show: "), `the number of bidders is not published in these notices, so “only one bid” cannot be tested. ${nf0.format(q.no_supplier_registration)} of ${nf0.format(q.awards)} awards (${pc(q.no_supplier_registration / q.awards * 100)}) name a supplier without a company number. To avoid singling out private individuals, suppliers are named only when they have a company or charity registration or an organisation-style name; ${nf0.format(q.not_named_as_organisation)} awards are counted but never named. Each flag below is a prompt to look closer, not a finding of wrongdoing.`));
     if (S.by_source && S.by_source.fts) root.append(el("div", { class: "notice info" }, el("b", {}, "Two sources. "), `${Object.entries(S.by_source).map(([k, v]) => `${SRC[k] || k}: ${nf0.format(v.n)} awards, ${gbp(v.value)}`).join("; ")}. Find a Tender records the reason for each award made without a call for competition, shown in the flag text; Contracts Finder does not. Find a Tender notices carry the date they were last updated, so an old award that was amended can appear as new, and for the same reason the “published late” test is applied to Contracts Finder awards only.`));
+    root.append(el("div", { class: "notice" }, el("b", {}, "Counted once, and ceilings left out. "), `${nf0.format(cl.n)} notices (${gbp(cl.value)}) are frameworks or similar agreements, where the value is the most the buyer expects to spend with a list of suppliers, not a commitment; they are set aside below and not in any total. The work bought through them appears as call-offs. ${nf0.format(q.excluded["also published on Find a Tender (counted once)"] || 0)} awards published on both services are counted once. ${nf0.format(S.future_start.n)} awards (${gbp(S.future_start.value)}) have a contract start date still in the future.`));
     const body = el("div", {});
     root.append(body);
     build();
+    root.append(card("Set aside: frameworks and similar agreements", "The largest agreements whose value is a ceiling, not a commitment. They are not counted anywhere above.",
+      el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Buyer", "Agreement", "Ceiling", "Source"].map((h, i) => el("th", { class: i === 2 ? "n" : "" }, h)))),
+        el("tbody", {}, cl.items.slice(0, 15).map(c => el("tr", {}, el("td", {}, c.buyer), el("td", {}, c.url ? el("a", { href: c.url, rel: "noopener" }, c.title) : c.title), el("td", { class: "n" }, gbp(c.value)), el("td", {}, SRC[c.src] || c.src))))))));
     return root;
 
     function build() {

@@ -116,7 +116,7 @@ class Implausible(unittest.TestCase):
 
 class FindTenderRecords(unittest.TestCase):
     def test_late_test_is_not_applied_to_find_a_tender(self):
-        recs = [rec(1, av=500_000, aw="2025-01-01", pub="2026-03-10", src="fts"), rec(2, av=500_000, aw="2025-01-01", pub="2026-03-10")]
+        recs = [rec(1, av=500_000, aw="2025-01-01", pub="2026-03-10", src="fts", title="Alpha works"), rec(2, av=500_000, aw="2025-01-01", pub="2026-03-10", title="Beta works")]
         out, _ = P.build(recs)
         late = [f for f in out["flags"] if f["type"] == "proc_late"]
         self.assertEqual(len(late), 1)
@@ -125,6 +125,33 @@ class FindTenderRecords(unittest.TestCase):
         out, _ = P.build([rec(1, av=2_000_000, pm="limited", pmd="Award procedure without prior publication of a call for competition", why="extreme urgency", src="fts")])
         d = [f for f in out["flags"] if f["type"] == "proc_direct"][0]
         self.assertIn("extreme urgency", d["detail"])
+
+
+class AgreedContracts(unittest.TestCase):
+    def test_framework_ceiling_is_set_aside(self):
+        out, _ = P.build([rec(1, av=50_000_000, title="Building Works Framework Agreement"), rec(2, av=90_000, title="Boiler repairs")])
+        self.assertEqual(out["summary"]["total_value"], 90_000)
+        self.assertEqual(out["ceilings"]["n"], 1)
+        self.assertEqual(out["ceilings"]["value"], 50_000_000)
+
+    def test_call_off_from_a_framework_is_a_contract(self):
+        out, _ = P.build([rec(1, av=70_000, title="Framework call-off for cleaning", pmd="Call-off from a framework agreement")])
+        self.assertEqual(out["summary"]["n"], 1)
+
+    def test_signed_and_awarded_views(self):
+        out, _ = P.build([rec(1, av=100_000, title="A", src="fts"), rec(2, av=200_000, title="B")])
+        self.assertEqual(out["views"]["signed"]["summary"]["total_value"], 100_000)
+        self.assertEqual(out["views"]["awarded"]["summary"]["total_value"], 200_000)
+        self.assertEqual(out["summary"]["total_value"], 300_000)
+
+    def test_award_on_both_services_is_counted_once_as_signed(self):
+        out, _ = P.build([rec(1, av=100_000, title="Same job", src="fts"), rec(2, av=100_000, title="Same job")])
+        self.assertEqual(out["summary"]["n"], 1)
+        self.assertEqual(out["summary"]["by_status"], {"signed": {"n": 1, "value": 100_000}})
+
+    def test_find_a_tender_without_signature_date_is_only_awarded(self):
+        out, _ = P.build([rec(1, av=100_000, title="A", src="fts", aw="")])
+        self.assertIn("awarded", out["summary"]["by_status"])
 
 
 if __name__ == "__main__":

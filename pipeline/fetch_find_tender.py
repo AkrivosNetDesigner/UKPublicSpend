@@ -108,6 +108,7 @@ def compact(rel):
             "buyer": buyer.get("name"), "buyer_id": buyer.get("id"),
             "title": (a.get("title") or t.get("title") or "")[:140], "cpv": (t.get("classification") or {}).get("id"), "cpvd": (t.get("classification") or {}).get("description"),
             "cat": t.get("mainProcurementCategory"), "pm": t.get("procurementMethod"), "pmd": pmd, "why": why,
+            "fw": bool((t.get("techniques") or {}).get("hasFrameworkAgreement") or (t.get("techniques") or {}).get("hasDynamicPurchasingSystem")),
             "tv": (t.get("value") or {}).get("amount"), "tmin": None,
             "av": (c.get("value") or {}).get("amount"), "cur": (c.get("value") or {}).get("currency"),
             "sups": sups, "sme": None, "vcse": None,

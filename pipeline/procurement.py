@@ -86,6 +86,26 @@ def parse_date(s):
     except ValueError:
         return None
 
+CEILING_RE = re.compile(r"framework|dynamic purchasing|\bdps\b|\bdpl\b|\bdps\b|multi.?supplier|\bpanel\b|\bagreement\b", re.I)
+
+
+def is_ceiling(r):
+    """A framework agreement or similar (a list of suppliers a buyer can call on) rather than one signed contract.
+
+    The value on such a notice is the most the buyer expects to spend over the life of the agreement, not a commitment, and
+    the work is bought later through call-offs, which are counted as awards of their own."""
+    d = (r.get("pmd") or "").lower()
+    if "call-off" in d or "call off" in d:
+        return False
+    if CEILING_RE.search(r.get("title") or ""):
+        return True
+    return bool(r.get("fw")) and not re.search(r"without prior publication|outside the scope", d)
+
+
+def contract_status(r):
+    """'signed' when the notice records a signature date (Find a Tender); otherwise 'awarded' (a decision to award)."""
+    return "signed" if r.get("src") == "fts" and r.get("aw") else "awarded"
+
 
 def prepare(records):
     """Deduplicate awards, keep GBP awards with a value that were *originally published inside the window*.
@@ -116,6 +136,9 @@ def prepare(records):
         sup = r["sups"][0] if r.get("sups") else {}
         x = dict(r)
         x["src"] = r.get("src") or "cf"
+        x["status"] = contract_status(x)
+        x["ceiling"] = is_ceiling(x)
+        x["future"] = bool(r.get("cs") and r["cs"] > date.today().isoformat())
         x["mc"] = method_class(r.get("pm"), r.get("pmd"))
         x["skey"] = supplier_key(sup) if sup else None
         x["sname"] = sup.get("name") if sup else None
@@ -295,7 +318,13 @@ def summarise(rows, excluded):
     for r in rows:
         by_src[r.get("src") or "cf"]["n"] += 1
         by_src[r.get("src") or "cf"]["value"] += r["av"]
+    by_st = defaultdict(lambda: {"n": 0, "value": 0.0})
+    for r in rows:
+        by_st[r.get("status") or "awarded"]["n"] += 1
+        by_st[r.get("status") or "awarded"]["value"] += r["av"]
+    fut = [r for r in rows if r.get("future")]
     return {
+        "by_status": dict(by_st), "future_start": {"n": len(fut), "value": sum(r["av"] for r in fut)},
         "by_source": dict(by_src),
         "total_value": tot, "n": len(rows), "median": statistics.median([r["av"] for r in rows]) if rows else 0, "months": months,
         "by_month_value": {mm: dict(by_m[mm]) for mm in months}, "by_month_n": {mm: dict(by_mn[mm]) for mm in months},
@@ -319,15 +348,14 @@ def checks(rows, summary, raw_count):
     return cks
 
 
-def build(records, top_flags=300):
-    rows, excluded = prepare(records)
-    bad = [r for r in rows if m(r["av"]) >= PARAMS["implausible_m"]]
-    rows = [r for r in rows if m(r["av"]) < PARAMS["implausible_m"]]
-    if bad:
-        excluded["value of £10bn or more (looks like a data-entry error)"] = len(bad)
+def dupe_key(r):
+    return (norm_name(r.get("buyer")), norm_name(r.get("title"))[:60], round(r["av"]))
+
+
+def analyse_view(rows, excluded, bad, top_flags):
     summary = summarise(rows, excluded)
     flags = record_flags(rows) + repeat_award_flags(rows)
-    flags += [{"buyer": r["buyer"], "title": r["title"], "value": r["av"], "date": r["pub"], "url": r.get("url"), "supplier": r["sname"] if r["sorg"] else None,
+    flags += [{"buyer": r["buyer"], "title": r["title"], "value": r["av"], "date": r["pub"], "url": r.get("url"), "supplier": r["sname"] if r["sorg"] else None, "src": r.get("src"),
                "method": r.get("pmd"), "type": "proc_implausible", "sev": 3,
                "detail": f"{r['buyer']}: “{r['title']}” is published with a value of {fmt(r['av'])}, which is almost certainly a mistake. It is excluded from the totals on this page."} for r in bad]
     buyers, bflags = buyer_table(rows)
@@ -335,8 +363,39 @@ def build(records, top_flags=300):
     flags.sort(key=lambda f: (-f["sev"], -(f["value"] or 0)))
     counts = Counter(f["type"] for f in flags)
     sev = Counter(f["sev"] for f in flags)
-    bunch = bunching(rows)
     for f in flags:
         f["value_fmt"] = fmt(f["value"] or 0)
-    return {"summary": summary, "buyers": buyers[:200], "flags": flags[:top_flags], "flag_counts": dict(counts), "sev_counts": {str(k): v for k, v in sev.items()},
-            "bunching": bunch, "types": {k: {"title": v[0], "text": v[1]} for k, v in TYPE_INFO.items()}, "params": PARAMS}, checks(rows, summary, len(records))
+    return {"summary": summary, "buyers": buyers[:200], "flags": flags[:top_flags], "flag_counts": dict(counts), "sev_counts": {str(k): v for k, v in sev.items()}, "bunching": bunching(rows)}
+
+
+def build(records, top_flags=300):
+    """One set of numbers for what was agreed. Framework ceilings are set aside, an award published on both services is
+    counted once (the Find a Tender copy, which records the signature), and the page can show all agreed awards, only
+    signed contracts, or only awards whose signature is not recorded."""
+    rows, excluded = prepare(records)
+    bad = [r for r in rows if m(r["av"]) >= PARAMS["implausible_m"]]
+    rows = [r for r in rows if m(r["av"]) < PARAMS["implausible_m"]]
+    if bad:
+        excluded["value of £10bn or more (looks like a data-entry error)"] = len(bad)
+    fts_keys = {dupe_key(r) for r in rows if r["src"] == "fts"}
+    dup = [r for r in rows if r["src"] != "fts" and dupe_key(r) in fts_keys]
+    if dup:
+        excluded["also published on Find a Tender (counted once)"] = len(dup)
+        ids = {id(r) for r in dup}
+        rows = [r for r in rows if id(r) not in ids]
+    ceil = [r for r in rows if r["ceiling"]]
+    rows = [r for r in rows if not r["ceiling"]]
+    if ceil:
+        excluded["frameworks and similar agreements (value is a ceiling; listed separately)"] = len(ceil)
+    out = analyse_view(rows, excluded, bad, top_flags)
+    out["views"] = {}
+    for name in ("signed", "awarded"):
+        sub = [r for r in rows if r["status"] == name]
+        if sub:
+            out["views"][name] = analyse_view(sub, excluded, [], top_flags)
+    out["ceilings"] = {"n": len(ceil), "value": sum(r["av"] for r in ceil),
+                       "items": [{"buyer": r["buyer"], "title": r["title"], "value": r["av"], "date": r["pub"], "src": r["src"], "url": r.get("url"), "method": r.get("pmd")}
+                                 for r in sorted(ceil, key=lambda r: -r["av"])[:25]]}
+    out["types"] = {k: {"title": v[0], "text": v[1]} for k, v in TYPE_INFO.items()}
+    out["params"] = PARAMS
+    return out, checks(rows, out["summary"], len(records))
