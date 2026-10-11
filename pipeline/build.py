@@ -212,12 +212,12 @@ def main():
     checks += dchecks + [W.dwp_vs_treasury(dwp, t11, rec)]
     dump("dwp.json", {**dwp, "flags": dflags, "flag_types": {k: {"title": v[0], "text": v[1]} for k, v in W.DWP_FLAG_TEXT.items()}})
 
-    # ---- Contracts Finder award notices (downloaded separately by fetch_contracts.py)
-    cache = RAW / "cf_awards.jsonl"
+    # ---- Contracts Finder and Find a Tender award notices (downloaded separately by fetch_contracts.py and fetch_find_tender.py)
+    cache, fts_cache = RAW / "cf_awards.jsonl", RAW / "fts_awards.jsonl"
     if "--skip-contracts" in sys.argv:
         print("procurement: skipped (--skip-contracts); existing site/data/procurement.json left as is")
-    elif cache.exists():
-        recs = [json.loads(line) for line in cache.open()]
+    elif cache.exists() or fts_cache.exists():
+        recs = [json.loads(line) for c in (cache, fts_cache) if c.exists() for line in c.open()]
         proc, pchecks = PR.build(recs)
         checks += pchecks
         proc["window"] = {"from": proc["summary"]["months"][0], "to": proc["summary"]["months"][-1]}

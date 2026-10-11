@@ -661,16 +661,17 @@
     }
   };
 
-  /* ---------- Contracts (Contracts Finder award notices) */
+  /* ---------- Contracts (Contracts Finder and Find a Tender award notices) */
   const procState = { mode: "value", sort: "value", q: "", ftype: "", sev: 2, limit: 20, fq: "" };
   const CLS = [["competitive", "Competitive"], ["framework", "Framework call-off"], ["direct", "Direct award / no competition"], ["unspecified", "Procedure not stated"], ["other", "Other"]];
   const CLS_COLOR = { competitive: "var(--s1)", framework: "var(--s3)", direct: "var(--s2)", unspecified: "var(--s4)", other: "var(--other)" };
   const gbp = v => { const a = Math.abs(v), s = v < 0 ? "−" : ""; return a >= 1e9 ? `${s}£${nf2.format(a / 1e9)}bn` : a >= 1e6 ? `${s}£${nf1.format(a / 1e6)}m` : `${s}£${nf0.format(a / 1e3)}k`; };
   VIEWS.procurement = () => {
     const P = D.proc, S = P.summary, q = S.quality, cls = S.by_class;
+    const SRC = { cf: "Contracts Finder", fts: "Find a Tender" }, srcText = Object.entries(S.by_source || { cf: { n: S.n } }).map(([k, v]) => `${nf0.format(v.n)} from ${SRC[k] || k}`).join(" and ");
     const share = k => (cls[k] ? cls[k].value / S.total_value * 100 : 0), shareN = k => (cls[k] ? cls[k].n / S.n * 100 : 0);
     const root = el("div", {}, el("h2", {}, "Government contracts"),
-      el("p", { class: "lede" }, `Contracts that public bodies in England (and some UK-wide bodies) published as awarded on Contracts Finder, ${monLabel(S.months[0])} to ${monLabel(S.months.at(-1))}. A contract's value is its total over its lifetime, not a year's spending, and only contracts the buyer chose or had to publish appear here, so this is a window onto procurement and not the whole of it.`),
+      el("p", { class: "lede" }, `Contracts that public bodies in England (and some UK-wide bodies) published as awarded on Contracts Finder and Find a Tender (${srcText}), ${monLabel(S.months[0])} to ${monLabel(S.months.at(-1))}. A contract's value is its total over its lifetime, not a year's spending, and only contracts the buyer chose or had to publish appear here, so this is a window onto procurement and not the whole of it.`),
       el("div", { class: "kpis" },
         kpi("Awards published", nf0.format(S.n), `${monLabel(S.months[0])} – ${monLabel(S.months.at(-1))}`),
         kpi("Total contract value", gbp(S.total_value), `median award ${gbp(S.median)}`),
@@ -679,6 +680,7 @@
         kpi("Procedure not stated", pc(shareN("unspecified")), `of awards · ${nf0.format(q.unspecified_method)} notices`),
         kpi("Flags raised", nf0.format(Object.values(P.flag_counts).reduce((a, b) => a + b, 0)), `${P.sev_counts["3"] || 0} high priority`)));
     root.append(el("div", { class: "notice info" }, el("b", {}, "What this cannot show: "), `the number of bidders is not published in these notices, so “only one bid” cannot be tested. ${nf0.format(q.no_supplier_registration)} of ${nf0.format(q.awards)} awards (${pc(q.no_supplier_registration / q.awards * 100)}) name a supplier without a company number. To avoid singling out private individuals, suppliers are named only when they have a company or charity registration or an organisation-style name; ${nf0.format(q.not_named_as_organisation)} awards are counted but never named. Each flag below is a prompt to look closer, not a finding of wrongdoing.`));
+    if (S.by_source && S.by_source.fts) root.append(el("div", { class: "notice info" }, el("b", {}, "Two sources. "), `${Object.entries(S.by_source).map(([k, v]) => `${SRC[k] || k}: ${nf0.format(v.n)} awards, ${gbp(v.value)}`).join("; ")}. Find a Tender records the reason for each award made without a call for competition, shown in the flag text; Contracts Finder does not. Find a Tender notices carry the date they were last updated, so an old award that was amended can appear as new, and for the same reason the “published late” test is applied to Contracts Finder awards only.`));
     const body = el("div", {});
     root.append(body);
     build();
@@ -748,7 +750,7 @@
         el("li", {}, `${nf0.format(q.no_tender_estimate)} awards (${pc(q.no_tender_estimate / q.awards * 100)}) have no advertised estimate, so award-versus-estimate cannot be checked.`),
         el("li", {}, `${nf0.format(q.zero_or_negative_value)} awards have a zero or negative value and ${nf0.format(q.bad_dates)} have contract end dates before their start dates. These are data-entry problems in the notices, not necessarily real contracts.`),
         el("li", {}, `${Object.entries(q.excluded).map(([k, v]) => `${nf0.format(v)} notices excluded (${k})`).join("; ") || "No notices were excluded."}.`),
-        el("li", {}, "Contracts published only on Find a Tender (the above-threshold register) are not included in this version."))));
+        el("li", {}, "Awards with no published value (" + nf0.format(q.excluded && q.excluded["no value"] || 0) + ") are left out. Notices that appear on both services are counted twice; the overlap is small (about 3% in a test)."))));
     }
   };
 
@@ -1157,7 +1159,7 @@
     hTiles.forEach(([k, t]) => tiles.append(tileBtn(t, hf.filter(f => f.type === k).length, "in HMRC statistics · jump to section ↓", () => jumpTo("hmrc-flags"))));
     tiles.append(tileBtn(D.ons.flag_types.ons_monthly_jump.title, D.ons.flags.length, "in ONS monthly series · jump to section ↓", () => jumpTo("ons-flags")));
     tiles.append(tileBtn("Benefit fraud and error flags (DWP)", D.dwp.flags.length, "high rates, old measurements · jump to section ↓", () => jumpTo("dwp-flags")));
-    if (D.proc) tiles.append(tileBtn("Government contract flags (Contracts Finder)", Object.values(D.proc.flag_counts).reduce((a, b) => a + b, 0), "direct awards, late notices · jump to section ↓", () => jumpTo("proc-summary")));
+    if (D.proc) tiles.append(tileBtn("Government contract flags (Contracts Finder, Find a Tender)", Object.values(D.proc.flag_counts).reduce((a, b) => a + b, 0), "direct awards, late notices · jump to section ↓", () => jumpTo("proc-summary")));
     tiles.append(tileBtn("Local council flags (England)", "see below", "spending, reserves, schools deficits · jump to section ↓", () => jumpTo("lc-flags-summary")));
     tiles.append(tileBtn("Unusual borrowing months", D.bor.flags.length, "year-on-year changes · jump to section ↓", () => jumpTo("bor-flags")));
     root.append(tiles);
@@ -1351,7 +1353,7 @@
       el("li", {}, el("b", {}, "Borrowing sign. "), "ONS publishes net borrowing as a negative number; the site shows borrowing as positive. The Treasury's totals are built on ONS data, so the two agree almost exactly in older years; that is not an independent test."),
       el("li", {}, el("b", {}, "Tax gap is an estimate. "), "HMRC builds it from sampling, models and assumptions; it is not a count of detected fraud, and recent years are routinely revised."),
       el("li", {}, el("b", {}, "Aggregate, not transactions. "), "The most detailed level is about 1,600 departmental spending lines per year. Individual payments, contracts and benefit claims are not in these sources, so the site cannot detect an individual fraud. The nearest things to a fraud measure are HMRC's tax gap by behaviour (evasion, criminal attacks, error…) and DWP's estimates of fraud and error in benefits. Both are statistical estimates from samples, not counts of proven cases."),
-      el("li", {}, el("b", {}, "Contracts are notices, not payments. "), "Contracts Finder holds award notices published by buyers. A contract's value is its lifetime value, many contracts never appear, and the notices do not state how many bidders there were, so \"single bidder\" cannot be tested. Suppliers are named only when they are recognisably organisations."),
+      el("li", {}, el("b", {}, "Contracts are notices, not payments. "), "Contracts Finder and Find a Tender hold award notices published by buyers; the two services overlap very little. Notices on Find a Tender that say “outside the scope” of the procurement rules, or that name a framework, are treated as call-offs or other, not as direct awards. A contract's value is its lifetime value, many contracts never appear, and the notices do not state how many bidders there were, so \"single bidder\" cannot be tested. Suppliers are named only when they are recognisably organisations."),
       el("li", {}, el("b", {}, "Benefit estimates are for Great Britain, "), "not the UK, and some benefits are measured only every few years, so part of the headline is carried forward from earlier measurements. DWP also reclassified some underpayments from 2022-23 and changed methods in places, which limits comparison across years."),
       el("li", {}, el("b", {}, "Coverage. "), "The line-by-line database covers departmental budgets only (DEL and departmental AME) and, by the Treasury's own note, excludes the Security and Intelligence Agencies and military operations costs. Long-run totals and function splits (Chapter 4) cover everything."),
       el("li", {}, el("b", {}, "Latest numbers can change. "), "Recent years are provisional and get restated; the revision tests show how much they have moved in the past."),

@@ -114,5 +114,18 @@ class Implausible(unittest.TestCase):
         self.assertIn("proc_implausible", out["flag_counts"])
 
 
+class FindTenderRecords(unittest.TestCase):
+    def test_late_test_is_not_applied_to_find_a_tender(self):
+        recs = [rec(1, av=500_000, aw="2025-01-01", pub="2026-03-10", src="fts"), rec(2, av=500_000, aw="2025-01-01", pub="2026-03-10")]
+        out, _ = P.build(recs)
+        late = [f for f in out["flags"] if f["type"] == "proc_late"]
+        self.assertEqual(len(late), 1)
+
+    def test_reason_for_direct_award_appears_in_flag(self):
+        out, _ = P.build([rec(1, av=2_000_000, pm="limited", pmd="Award procedure without prior publication of a call for competition", why="extreme urgency", src="fts")])
+        d = [f for f in out["flags"] if f["type"] == "proc_direct"][0]
+        self.assertIn("extreme urgency", d["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()

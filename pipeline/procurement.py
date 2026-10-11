@@ -115,6 +115,7 @@ def prepare(records):
             continue
         sup = r["sups"][0] if r.get("sups") else {}
         x = dict(r)
+        x["src"] = r.get("src") or "cf"
         x["mc"] = method_class(r.get("pm"), r.get("pmd"))
         x["skey"] = supplier_key(sup) if sup else None
         x["sname"] = sup.get("name") if sup else None
@@ -145,13 +146,15 @@ def record_flags(rows, p=PARAMS):
     flags = []
     for r in rows:
         v = r["av"]
-        base = {"buyer": r["buyer"], "title": r["title"], "value": v, "date": r["pub"], "url": r.get("url"),
+        base = {"buyer": r["buyer"], "title": r["title"], "value": v, "date": r["pub"], "url": r.get("url"), "src": r.get("src"),
                 "supplier": r["sname"] if r["sorg"] else None, "method": r.get("pmd")}
         if r["mc"] == "direct" and m(v) >= p["direct_min_m"]:
             sev = 3 if m(v) >= p["direct_sev3_m"] else 2 if m(v) >= p["direct_sev2_m"] else 1
             flags.append({**base, "type": "proc_direct", "sev": sev,
-                          "detail": f"{r['buyer']} awarded {fmt(v)} without competition ({r.get('pmd') or 'direct award'}): “{r['title']}”."})
+                          "detail": f"{r['buyer']} awarded {fmt(v)} without competition ({r.get('pmd') or 'direct award'}): “{r['title']}”." + (f" Reason given: {r['why']}." if r.get("why") else "")})
         late = r["lag_aw"] if r["lag_aw"] is not None else r["lag_cs"]
+        if r.get("src") == "fts":
+            late = None                      # Find a Tender only gives the date of the latest update, so first publication (and so lateness) cannot be told apart from a later amendment
         if late is not None and late >= p["late_days"] and m(v) >= p["late_min_m"]:
             sev = 3 if late >= 365 and m(v) >= 1 else 2 if late >= 180 else 1
             flags.append({**base, "type": "proc_late", "sev": sev,
@@ -288,7 +291,12 @@ def summarise(rows, excluded):
                "no_supplier_registration": sum(1 for r in rows if not r["registered"]), "not_named_as_organisation": n_ind,
                "no_tender_estimate": sum(1 for r in rows if not r.get("tv")), "bad_dates": sum(1 for r in rows if r["bad_dates"]),
                "number_of_bidders_published": 0}
+    by_src = defaultdict(lambda: {"n": 0, "value": 0.0})
+    for r in rows:
+        by_src[r.get("src") or "cf"]["n"] += 1
+        by_src[r.get("src") or "cf"]["value"] += r["av"]
     return {
+        "by_source": dict(by_src),
         "total_value": tot, "n": len(rows), "median": statistics.median([r["av"] for r in rows]) if rows else 0, "months": months,
         "by_month_value": {mm: dict(by_m[mm]) for mm in months}, "by_month_n": {mm: dict(by_mn[mm]) for mm in months},
         "by_class": {k: {"n": clsn[k], "value": cls[k]} for k in cls}, "by_category": dict(cat),

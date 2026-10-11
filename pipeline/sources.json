@@ -8,6 +8,7 @@
     "https://www.ons.gov.uk/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances",
     "https://www.gov.uk/government/collections/fraud-and-error-in-the-benefit-system",
     "https://www.contractsfinder.service.gov.uk/",
+    "https://www.find-tender.service.gov.uk/",
     "https://www.dmo.gov.uk/data/gilt-market/",
     "https://www.bankofengland.co.uk/boeapps/database/"
   ],
@@ -202,6 +203,12 @@
       "publisher": "Office for National Statistics",
       "title": "Population estimates by local authority and single year of age, used to put council spending per resident, per child and per person aged 65+",
       "url": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/populationestimatesforukenglandandwalesscotlandandnorthernireland/mid2024/mye24tablesuk.xlsx"
+    },
+    "find_a_tender": {
+      "release": "Find a Tender award notices (recent days; see window on the Contracts page)",
+      "publisher": "Cabinet Office",
+      "title": "Find a Tender OCDS API: award notices, downloaded by pipeline/fetch_find_tender.py (organisation-level fields only; named contact people are discarded; framework call-offs are kept apart from direct awards)",
+      "url": "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages"
     },
     "contracts_finder": {
       "release": "Contracts Finder award notices (recent days; see window on the Contracts page)",

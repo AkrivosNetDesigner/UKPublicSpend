@@ -40,9 +40,13 @@ jobs:
         continue-on-error: true       # an outage at Contracts Finder must not stop the other sources refreshing
         run: python -I pipeline/fetch_contracts.py
 
+      - name: Download recent Find a Tender notices
+        continue-on-error: true       # about 20 requests for two months of awards; an outage must not stop the other sources
+        run: python -I pipeline/fetch_find_tender.py
+
       - name: Build the data
         run: |
-          if [ -f raw/cf_awards.jsonl ]; then
+          if [ -f raw/cf_awards.jsonl ] || [ -f raw/fts_awards.jsonl ]; then
             python -I pipeline/build.py
           else
             python -I pipeline/build.py --skip-contracts
