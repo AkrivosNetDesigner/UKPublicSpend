@@ -94,6 +94,15 @@ python3 -m http.server -d site 8000       # then open http://localhost:8000
 
 `site/` is plain HTML/CSS/JS with no build step or external requests, so it can be hosted anywhere (e.g. GitHub Pages: publish the `site` folder). To pick up a new Treasury release, add its file URLs to `pipeline/sources.json` and re-run the build.
 
+## Automatic monthly refresh
+
+`.github/workflows/refresh-data.yml` runs on the 6th of each month (and on demand from the repository's Actions tab): it runs the tests, downloads the newest official files, rebuilds `site/data` and opens a pull request. Nothing goes live until you merge it and redeploy.
+
+- Files that change during the year are found automatically: NHS England waiting times (through its public REST API), GOV.UK releases (through the GOV.UK content API: HMRC receipts, MHCLG revenue and capital outturn, planning, homelessness, Defra waste, DfT roads, Ofsted), the DMO and Bank of England pages, the ONS public finances file, and the Department for Education data sets.
+- Contracts Finder is fetched day by day with a cache between runs, so each month only the new days are downloaded.
+- Files published once a year are **not** refreshed automatically because they have a new file name and page each time: the Treasury Public Spending Statistics (July), HMRC tax gap (June), DWP fraud and error (May), the English indices of deprivation and the ONS population estimates. Update their entries in `pipeline/sources.json` when they appear.
+- One-time setup: in the repository on GitHub, open Settings > Actions > General and tick "Allow GitHub Actions to create and approve pull requests".
+
 ## Deploy on Cloudflare Workers
 
 `wrangler.jsonc` serves `site/` as static assets (no Worker script needed):

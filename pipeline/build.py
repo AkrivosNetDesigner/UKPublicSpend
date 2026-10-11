@@ -37,6 +37,8 @@ OUT = ROOT / "site" / "data"
 
 def fetch(key, meta):
     dest = RAW / (key + os.path.splitext(meta["url"])[1])
+    if meta.get("govuk") or meta.get("refresh_days"):   # republished regularly: look for the current file again once the copy is old
+        return fresh(dest, spec_url(meta), 24 * meta.get("refresh_days", 20))
     if dest.exists() and dest.stat().st_size > 1000:
         return dest
     RAW.mkdir(exist_ok=True)
@@ -73,6 +75,19 @@ def fresh(dest, url, hours=20):
     with urllib.request.urlopen(req, timeout=120, context=ctx) as r:
         dest.write_bytes(r.read())
     return dest
+
+
+def get_json(url):
+    ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
+    return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read())
+
+
+def spec_url(meta):
+    """The address to download: the stored one, or (when the source names a GOV.UK page and attachment title) a lookup of the current file."""
+    g = meta.get("govuk")
+    if not g:
+        return meta["url"]
+    return lambda: GV.pick(get_json(GV.API + g["page"]), g["title"])
 
 
 def discover(page, pattern):
@@ -257,7 +272,7 @@ def main():
     dump("borrowing.json", bor)
     # ---- local councils (England): MHCLG revenue outturn + ONS mid-year population
     lsrc = src["apis"]
-    ro = L.read_outturn(fresh(RAW / "revenue_outturn.csv", lsrc["mhclg_outturn"]["url"], 24 * 30))[0]
+    ro = L.read_outturn(fresh(RAW / "revenue_outturn.csv", spec_url(lsrc["mhclg_outturn"]), 24 * 30))[0]
     lpop = L.read_population(fresh(RAW / "mye_population.xlsx", lsrc["ons_population"]["url"], 24 * 30))
     lc, lyears, lpy, lmetrics, lstats, lflags = L.build(ro, lpop)
     checks += L.checks(ro, lc, lpop)
@@ -265,27 +280,24 @@ def main():
     dump("councils.json", L.export(lc, lyears, lpy, lmetrics, lstats, lflags, lpop, england=eng))
     # ---- what it buys: council spending paired with results (waste, roads), allowing for deprivation
     cinfo = {k: {"name": v["name"], "group": v["group"], "cls": v["cls"], "current": bool(lpy in v["years"] or lyears[-2] in v["years"] or lpy in v["missing"])} for k, v in lc.items()}
-    oc = OC.build(RAW / "revenue_outturn.csv", fresh(RAW / "capital_outturn.csv", lsrc["mhclg_capital"]["url"], 24 * 30), lpop,
-                  fresh(RAW / "waste_la.ods", lsrc["defra_waste"]["url"], 24 * 30), fresh(RAW / "rdc0120.ods", lsrc["dft_road_condition"]["url"], 24 * 30),
-                  fresh(RAW / "rdl0202.ods", lsrc["dft_road_length"]["url"], 24 * 30), fresh(RAW / "imd_lower.xlsx", lsrc["imd_lower"]["url"], 24 * 90),
+    oc = OC.build(RAW / "revenue_outturn.csv", fresh(RAW / "capital_outturn.csv", spec_url(lsrc["mhclg_capital"]), 24 * 30), lpop,
+                  fresh(RAW / "waste_la.ods", spec_url(lsrc["defra_waste"]), 24 * 30), fresh(RAW / "rdc0120.ods", spec_url(lsrc["dft_road_condition"]), 24 * 30),
+                  fresh(RAW / "rdl0202.ods", spec_url(lsrc["dft_road_length"]), 24 * 30), fresh(RAW / "imd_lower.xlsx", lsrc["imd_lower"]["url"], 24 * 90),
                   fresh(RAW / "imd_upper.xlsx", lsrc["imd_upper"]["url"], 24 * 90), cinfo)
     edu = next(r for r in functions["real"] if r["label"] == "9. Education")
     ees = lambda k: NT.rows_from_csv_bytes(fresh(RAW / f"{k}.csv.gz", lsrc[k]["url"], 24 * 7).read_bytes())
     oc["national"] = {"schools": NT.build(ees("ees_ks2"), ees("ees_ks4"), ees("ees_pupils"), functions["years"][:len(edu["values"])], edu["values"])}
     # ---- more pairings: planning decisions, homelessness, children's social care and Ofsted (files found through the GOV.UK content API)
-    def get_json_(url):
-        ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
-        return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read())
-    gov = lambda page, pat, key=None: (lambda: GV.pick(get_json_(GV.API + page), pat, key))
+    gov = lambda page, pat, key=None: (lambda: GV.pick(get_json(GV.API + page), pat, key))
     PLAN, HOM, CSC = "/government/statistical-data-sets/live-tables-on-planning-application-statistics", "/government/statistical-data-sets/live-tables-on-homelessness", "/government/collections/childrens-social-care-statistics"
     try:
-        hs = max(GV.fy_key(t) for t, _ in GV.attachments(get_json_(GV.API + HOM)) if "financial year" in t.lower())
+        hs = max(GV.fy_key(t) for t, _ in GV.attachments(get_json(GV.API + HOM)) if "financial year" in t.lower())
     except Exception:
         hs = 2024
     hom_year = f"{hs}-{(hs + 1) % 100:02d}"
 
     def ofsted_url():
-        doc = get_json_(GV.API + GV.latest_document(get_json_(GV.API + CSC), r"local authority inspection outcomes as at"))
+        doc = get_json(GV.API + GV.latest_document(get_json(GV.API + CSC), r"local authority inspection outcomes as at"))
         return GV.pick(doc, r"underlying data")
     imd_lo, imd_up = OC.read_imd(RAW / "imd_lower.xlsx", RAW / "imd_upper.xlsx")
     oc["pairings"] += OC2.build(RAW / "revenue_outturn.csv", lpop, cinfo, real_factor, imd_lo, imd_up, lpy,
@@ -293,9 +305,6 @@ def main():
                                 fresh(RAW / "hom_fy.ods", gov(HOM, r"financial year " + str(hs) + "-"), 24 * 7),
                                 fresh(RAW / "hom_ta.ods", gov(HOM, r"detailed local authority level tables: January to March " + str(hs + 1)), 24 * 7), hom_year,
                                 fresh(RAW / "ofsted.ods", ofsted_url, 24 * 7))
-    def get_json(url):
-        ctx = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE") or None)
-        return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "UKPublicSpend/1.0"}), timeout=60, context=ctx).read())
     health = next(r for r in functions["real"] if r["label"] == "7. Health")["values"]
     hgdp = next(r for r in functions["gdp"] if r["label"] == "7. Health")["values"]
     rtt = NHS.read(fresh(RAW / "nhs_rtt.xlsx", lambda: NHS.discover(get_json), 24 * 3))

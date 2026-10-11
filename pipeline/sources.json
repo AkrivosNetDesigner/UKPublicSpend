@@ -53,7 +53,12 @@
       "release": "HMRC receipts, Sept 2026",
       "publisher": "HMRC",
       "title": "HMRC tax receipts and National Insurance contributions for the UK: statistics table (monthly from April 2017, annual from 2006-07)",
-      "url": "https://assets.publishing.service.gov.uk/media/6aa923f20420ac660805f7f2/NS_Table.ods"
+      "url": "https://assets.publishing.service.gov.uk/media/6aa923f20420ac660805f7f2/NS_Table.ods",
+      "govuk": {
+        "page": "/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk",
+        "title": "statistics table"
+      },
+      "refresh_days": 20
     },
     "hmrc_taxgap": {
       "release": "Measuring tax gaps 2026",
@@ -65,7 +70,8 @@
       "release": "ONS Public sector finances, Aug 2026 (published 22 Sept 2026)",
       "publisher": "ONS",
       "title": "Public sector finances: monthly dataset (PUSF), non-seasonally adjusted, current prices, from April 1997",
-      "url": "https://www.ons.gov.uk/file?uri=/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances/current/pusf.csv"
+      "url": "https://www.ons.gov.uk/file?uri=/economy/governmentpublicsectorandtaxes/publicsectorfinance/datasets/publicsectorfinances/current/pusf.csv",
+      "refresh_days": 20
     },
     "dwp_2026": {
       "release": "DWP fraud and error, FYE 2026",
@@ -133,25 +139,41 @@
       "release": "Capital expenditure and receipts time series 2018-19 to 2024-25",
       "publisher": "Ministry of Housing, Communities and Local Government",
       "title": "Local authority capital expenditure and receipts in England: final outturn time series (capital spending on roads used for the What it buys pairing)",
-      "url": "https://assets.publishing.service.gov.uk/media/69c2a55b13f1436476e4436c/Capital_time_series_data_wide_24_03_26.csv"
+      "url": "https://assets.publishing.service.gov.uk/media/69c2a55b13f1436476e4436c/Capital_time_series_data_wide_24_03_26.csv",
+      "govuk": {
+        "page": "/government/statistics/local-authority-capital-expenditure-and-receipts-in-england-final-outturn-time-series",
+        "title": "time series data set"
+      }
     },
     "defra_waste": {
       "release": "Local authority collected waste management 2024-25",
       "publisher": "Defra",
       "title": "Local authority collected waste statistics: local authority data, Table 3 selected indicators (recycling rate, residual waste per household)",
-      "url": "https://assets.publishing.service.gov.uk/media/69c68a6578ca1aa5a63609c3/LA_and_Regional_Spreadsheet_2024-25.ods"
+      "url": "https://assets.publishing.service.gov.uk/media/69c68a6578ca1aa5a63609c3/LA_and_Regional_Spreadsheet_2024-25.ods",
+      "govuk": {
+        "page": "/government/statistics/local-authority-collected-waste-management-annual-results",
+        "title": "local authority data annual results"
+      }
     },
     "dft_road_condition": {
       "release": "Road condition statistics RDC0120 (to March 2025)",
       "publisher": "Department for Transport",
       "title": "Percentage of local A road and motorway length, and of B and C roads, where maintenance should have been considered, by local authority",
-      "url": "https://assets.publishing.service.gov.uk/media/696facb9f6aa424b452e33a5/rdc0120.ods"
+      "url": "https://assets.publishing.service.gov.uk/media/696facb9f6aa424b452e33a5/rdc0120.ods",
+      "govuk": {
+        "page": "/government/statistical-data-sets/road-condition-statistics-data-tables-rdc",
+        "title": "^Local authority managed classified road where maintenance should have been considered.* by local authority"
+      }
     },
     "dft_road_length": {
       "release": "Road length statistics RDL0202 (2025)",
       "publisher": "Department for Transport",
       "title": "Road length (kilometres) by road type and local authority, used to put road spending per kilometre",
-      "url": "https://assets.publishing.service.gov.uk/media/697b6213aacd0dc9777b4fc9/rdl0202.ods"
+      "url": "https://assets.publishing.service.gov.uk/media/697b6213aacd0dc9777b4fc9/rdl0202.ods",
+      "govuk": {
+        "page": "/government/statistical-data-sets/road-length-statistics-rdl",
+        "title": "^Road length \\(kilometres\\) by road type and local authority in Great Britain$"
+      }
     },
     "imd_lower": {
       "release": "English indices of deprivation 2025",
@@ -169,7 +191,11 @@
       "release": "Revenue outturn multi-year data set v4 (2017-18 to 2025-26)",
       "publisher": "Ministry of Housing, Communities and Local Government",
       "title": "Local authority revenue expenditure and financing, England: revenue outturn time series (£ thousand, every council, 13 service lines and reserves)",
-      "url": "https://assets.publishing.service.gov.uk/media/6ab26ffffe72ed1e2b02ee74/Revenue_Outturn_time_series_data_v4.csv"
+      "url": "https://assets.publishing.service.gov.uk/media/6ab26ffffe72ed1e2b02ee74/Revenue_Outturn_time_series_data_v4.csv",
+      "govuk": {
+        "page": "/government/statistics/local-authority-revenue-expenditure-and-financing-england-revenue-outturn-multi-year-data-set",
+        "title": "Revenue Outturn time series data"
+      }
     },
     "ons_population": {
       "release": "Mid-2024 population estimates",
