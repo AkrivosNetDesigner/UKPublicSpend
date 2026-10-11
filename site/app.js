@@ -888,6 +888,7 @@
       const list = (title, sub, rows) => el("div", {}, el("h4", {}, title), el("p", { class: "sub" }, sub), rows.length ? el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, el("tr", {}, ["Council", "Spending", "Result"].map((h, i) => el("th", { class: i ? "n" : "" }, h)))),
         el("tbody", {}, rows.map(r => el("tr", { class: "click", onclick: () => { lcState.code = r.code; location.hash = "#/councils"; } }, el("td", {}, r.name), el("td", { class: "n" }, fx(r.x)), el("td", { class: "n" }, fy(r.y))))))) : el("p", { class: "small" }, "None stand out clearly."));
       body.replaceChildren(card(P.title + ": " + G.outcome_label, G.label, ...(grp ? [el("div", { class: "controls" }, grp)] : []),
+        ...(P.caution ? [el("div", { class: "notice" }, el("b", {}, "Careful with the direction. "), P.caution)] : []),
         el("ul", { class: "tight" }, el("li", {}, rawLine), el("li", {}, adjLine), el("li", {}, needLine)),
         el("div", { class: "controls" }, hlSel), hl ? el("p", {}, el("b", {}, hl.n), `: spending ${fx(hl.x)}, result ${fy(hl.y)}. Median for councils of this kind: spending ${fx(S.median_x)}, result ${fy(S.median_y)}.`) : null,
         legend, c1,
@@ -901,7 +902,7 @@
           el("li", {}, "Correlations here are Spearman rank correlations: 0 means no pattern, +1 or −1 means councils line up perfectly. Allowing for need uses the English Indices of Deprivation 2025 (average score for the area)" + (S.controls.length > 1 ? " and " + S.controls.slice(1).join(", ") : "") + " by removing their linear effect on the ranks first. The 95% range shows how much a pattern of this size could be down to chance with this many councils.")),
           el("p", { class: "small" }, "Sources: " + (P.sources || O.sources).map(s => s.publisher + ", " + s.title).join("; ") + ".")));
       draw(() => Charts.scatter(c1, { points: pts, xfmt: fx, yfmt: fy, xAxis: v => (X.prefix || "") + nf0.format(v) + (X.suffix || ""), yAxis: grades ? (v => grades[v] || "") : (v => nf0.format(v) + (Y.suffix || "")),
-        xlabel: X.label || "Spending", ylabel: G.outcome_label.replace(" (3-year average)", "").replace("Ofsted overall effectiveness of children's services", "Ofsted judgement") + (grades || !Y.suffix ? "" : " (" + Y.suffix.trim() + ")"), trend: !grades, title: P.title + " scatter chart" }));
+        xlabel: X.label || "Spending", ylabel: (G.short || G.outcome_label).replace(" (3-year average)", "").replace("Ofsted overall effectiveness of children's services", "Ofsted judgement") + (grades || !Y.suffix ? "" : " (" + Y.suffix.trim() + ")"), trend: !grades, title: P.title + " scatter chart" }));
     }
     function paintNhs() {
       const H = O.national.nhs, ms = H.months, i0 = ms.findIndex(m => m >= "2008-03"), mx = ms.slice(i0), L = ms.length - 1;

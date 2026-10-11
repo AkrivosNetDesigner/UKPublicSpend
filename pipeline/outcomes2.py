@@ -164,9 +164,9 @@ def build(ro_path, pop, councils_info, real, imd_lo, imd_up, spend_year, plan_p1
                 pts.append({"code": code, "name": i["name"], "x": s, "y": yv, "imd": imd_lo.get(code), "ctl": [need[code]]})
             a = O.analyse(pts, better, ["households threatened with or experiencing homelessness per 1,000"])
             if a:
-                groups.append({"group": g, "eligible": elig(g), "label": glabel, "outcome": key, "outcome_label": label, "better": better, "unit": y["suffix"] or "households",
+                groups.append({"group": g, "eligible": elig(g), "label": glabel, "outcome": key, "outcome_label": label, "short": "Temporary accommodation per 1,000 households" if key == "ta" else "Prevention success (%)", "better": better, "unit": y["suffix"] or "households",
                                "y": y, "stats": a[0], "points": _fmt_points(a)})
-    pairings.append({"id": "homelessness", "title": "Homelessness", "service": "Housing services", "year": hom_year,
+    pairings.append({"id": "homelessness", "caution": "Read the temporary accommodation result the other way round: councils with more households in temporary accommodation are forced to spend more, so a strong link here shows demand driving spending, not spending causing homelessness.", "title": "Homelessness", "service": "Housing services", "year": hom_year,
                      "spend_label": f"Net spending on homelessness services, £ per resident, {hom_year}",
                      "x": {"prefix": "£", "dp": 0, "label": "Net spending on homelessness, £ per resident", "per": "resident"}, "groups": groups,
                      "sources": [{"title": "Statutory homelessness detailed local authority tables (A1, P1, TA1)", "publisher": "MHCLG"}, {"title": "Revenue outturn (time series)", "publisher": "MHCLG"}, {"title": "English indices of deprivation 2025", "publisher": "MHCLG"}, {"title": "Mid-2024 population estimates", "publisher": "ONS"}],
@@ -198,7 +198,7 @@ def build(ro_path, pop, councils_info, real, imd_lo, imd_up, spend_year, plan_p1
                     summary.append({"grade": GRADE_LABEL[gr], "n": len(xs), "median": round(xs[len(xs) // 2], 0), "p25": round(xs[len(xs) // 4], 0), "p75": round(xs[(3 * len(xs)) // 4], 0)})
             groups.append({"group": g, "eligible": elig(g), "label": glabel, "outcome": "ofsted", "outcome_label": "Ofsted overall effectiveness of children's services", "better": +1, "unit": "grade",
                            "y": {"grades": {str(k): v for k, v in GRADE_LABEL.items()}}, "stats": a[0], "points": _fmt_points(a), "by_grade": summary})
-    pairings.append({"id": "csc", "title": "Children's social care", "service": "Children's social care", "year": "2022-23 to 2024-25 spending; latest Ofsted inspections",
+    pairings.append({"id": "csc", "caution": "Inspection grades and spending can influence each other in both directions: a poor inspection often leads to extra spending, which would make low-graded councils look like big spenders.", "title": "Children's social care", "service": "Children's social care", "year": "2022-23 to 2024-25 spending; latest Ofsted inspections",
                      "spend_label": "Net spending on children's social care, £ per child aged 0-17 a year, average of 2022-23 to 2024-25 (2025-26 prices)",
                      "x": {"prefix": "£", "dp": 0, "label": "Children's social care, £ per child aged 0-17 a year (real, 3-year average)", "per": "child"}, "groups": groups,
                      "sources": [{"title": "Local authority inspection outcomes (underlying data)", "publisher": "Ofsted"}, {"title": "Revenue outturn (time series)", "publisher": "MHCLG"}, {"title": "English indices of deprivation 2025", "publisher": "MHCLG"}, {"title": "Mid-2024 population estimates", "publisher": "ONS"}],
